@@ -1,13 +1,22 @@
 -- ============================================================
 -- AISYAH TOUR & TRAVEL - COMPLETE DATABASE SCHEMA
--- Single-file Supabase Migration
+-- Single-file Supabase Migration (FULL)
 -- Generated: 2026-02-09
 -- ============================================================
+-- CATATAN: File ini berisi SELURUH skema database proyek.
+-- Jalankan di Supabase SQL Editor pada project baru.
+-- ============================================================
 
 -- ============================================================
--- 1. HELPER FUNCTIONS (must be created before tables/policies)
+-- 1. EXTENSIONS
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+
+-- ============================================================
+-- 2. HELPER FUNCTIONS (harus dibuat sebelum tabel & policies)
 -- ============================================================
 
+-- Cek apakah user adalah admin
 CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -19,6 +28,7 @@ AS $$
   );
 $$;
 
+-- Cek apakah user memiliki role tertentu
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -30,6 +40,7 @@ AS $$
   );
 $$;
 
+-- Generate kode booking unik
 CREATE OR REPLACE FUNCTION public.generate_booking_code()
 RETURNS text
 LANGUAGE plpgsql
@@ -43,6 +54,7 @@ BEGIN
 END;
 $$;
 
+-- Auto-create profile saat user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
@@ -59,6 +71,7 @@ BEGIN
 END;
 $$;
 
+-- Auto-update kolom updated_at
 CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
@@ -70,6 +83,7 @@ BEGIN
 END;
 $$;
 
+-- Auto-manage kuota keberangkatan saat status booking berubah
 CREATE OR REPLACE FUNCTION public.update_departure_quota_on_booking_paid()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
@@ -78,7 +92,7 @@ AS $$
 DECLARE
   pilgrim_count INTEGER;
 BEGIN
-  -- Booking marked as paid → decrease quota
+  -- Booking dibayar → kurangi kuota
   IF NEW.status = 'paid' AND (OLD.status IS NULL OR OLD.status != 'paid') THEN
     SELECT COUNT(*) INTO pilgrim_count
     FROM public.booking_pilgrims WHERE booking_id = NEW.id;
@@ -99,7 +113,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- Booking cancelled from paid → restore quota
+  -- Booking dibatalkan dari paid → kembalikan kuota
   IF NEW.status = 'cancelled' AND OLD.status = 'paid' THEN
     SELECT COUNT(*) INTO pilgrim_count
     FROM public.booking_pilgrims WHERE booking_id = NEW.id;
@@ -121,10 +135,10 @@ END;
 $$;
 
 -- ============================================================
--- 2. TABLES
+-- 3. SEMUA TABEL (33 tabel)
 -- ============================================================
 
--- Profiles
+-- 3.1 Profiles (data user tambahan)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY,
   name text NOT NULL,
@@ -134,7 +148,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- User Roles
+-- 3.2 User Roles (role-based access control)
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -142,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Branches
+-- 3.3 Branches (cabang)
 CREATE TABLE IF NOT EXISTS public.branches (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -152,7 +166,7 @@ CREATE TABLE IF NOT EXISTS public.branches (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Agents
+-- 3.4 Agents (agen penjualan)
 CREATE TABLE IF NOT EXISTS public.agents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -163,7 +177,7 @@ CREATE TABLE IF NOT EXISTS public.agents (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Airlines
+-- 3.5 Airlines (maskapai)
 CREATE TABLE IF NOT EXISTS public.airlines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -171,7 +185,7 @@ CREATE TABLE IF NOT EXISTS public.airlines (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Airports
+-- 3.6 Airports (bandara)
 CREATE TABLE IF NOT EXISTS public.airports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -180,7 +194,7 @@ CREATE TABLE IF NOT EXISTS public.airports (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Hotels
+-- 3.7 Hotels
 CREATE TABLE IF NOT EXISTS public.hotels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -189,7 +203,7 @@ CREATE TABLE IF NOT EXISTS public.hotels (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Muthawifs (Tour Guides)
+-- 3.8 Muthawifs (pembimbing ibadah)
 CREATE TABLE IF NOT EXISTS public.muthawifs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -198,7 +212,7 @@ CREATE TABLE IF NOT EXISTS public.muthawifs (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Package Categories
+-- 3.9 Package Categories (kategori paket)
 CREATE TABLE IF NOT EXISTS public.package_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -209,7 +223,7 @@ CREATE TABLE IF NOT EXISTS public.package_categories (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Packages
+-- 3.10 Packages (paket umroh/haji)
 CREATE TABLE IF NOT EXISTS public.packages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -230,7 +244,7 @@ CREATE TABLE IF NOT EXISTS public.packages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Package Commissions
+-- 3.11 Package Commissions (komisi per paket)
 CREATE TABLE IF NOT EXISTS public.package_commissions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   package_id uuid NOT NULL REFERENCES public.packages(id),
@@ -239,7 +253,7 @@ CREATE TABLE IF NOT EXISTS public.package_commissions (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Package Departures
+-- 3.12 Package Departures (jadwal keberangkatan)
 CREATE TABLE IF NOT EXISTS public.package_departures (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   package_id uuid REFERENCES public.packages(id),
@@ -252,7 +266,7 @@ CREATE TABLE IF NOT EXISTS public.package_departures (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Departure Prices
+-- 3.13 Departure Prices (harga per tipe kamar per keberangkatan)
 CREATE TABLE IF NOT EXISTS public.departure_prices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   departure_id uuid REFERENCES public.package_departures(id),
@@ -261,7 +275,7 @@ CREATE TABLE IF NOT EXISTS public.departure_prices (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Itineraries
+-- 3.14 Itineraries (jadwal perjalanan)
 CREATE TABLE IF NOT EXISTS public.itineraries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   departure_id uuid REFERENCES public.package_departures(id),
@@ -271,7 +285,7 @@ CREATE TABLE IF NOT EXISTS public.itineraries (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Itinerary Days
+-- 3.15 Itinerary Days (detail per hari)
 CREATE TABLE IF NOT EXISTS public.itinerary_days (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   itinerary_id uuid REFERENCES public.itineraries(id),
@@ -282,7 +296,7 @@ CREATE TABLE IF NOT EXISTS public.itinerary_days (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Bookings
+-- 3.16 Bookings (pemesanan)
 CREATE TABLE IF NOT EXISTS public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_code text NOT NULL UNIQUE,
@@ -297,7 +311,7 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Booking Rooms
+-- 3.17 Booking Rooms (kamar dalam booking)
 CREATE TABLE IF NOT EXISTS public.booking_rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -308,7 +322,7 @@ CREATE TABLE IF NOT EXISTS public.booking_rooms (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Booking Pilgrims
+-- 3.18 Booking Pilgrims (data jemaah per booking)
 CREATE TABLE IF NOT EXISTS public.booking_pilgrims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -323,7 +337,7 @@ CREATE TABLE IF NOT EXISTS public.booking_pilgrims (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Payments
+-- 3.19 Payments (pembayaran)
 CREATE TABLE IF NOT EXISTS public.payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -339,7 +353,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Notifications
+-- 3.20 Notifications (notifikasi)
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -351,7 +365,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Coupons
+-- 3.21 Coupons (kupon diskon)
 CREATE TABLE IF NOT EXISTS public.coupons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
@@ -365,7 +379,7 @@ CREATE TABLE IF NOT EXISTS public.coupons (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Blog Posts
+-- 3.22 Blog Posts
 CREATE TABLE IF NOT EXISTS public.blog_posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -383,7 +397,7 @@ CREATE TABLE IF NOT EXISTS public.blog_posts (
   updated_at timestamp with time zone DEFAULT now()
 );
 
--- FAQs
+-- 3.23 FAQs
 CREATE TABLE IF NOT EXISTS public.faqs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   question text NOT NULL,
@@ -393,7 +407,7 @@ CREATE TABLE IF NOT EXISTS public.faqs (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Gallery
+-- 3.24 Gallery
 CREATE TABLE IF NOT EXISTS public.gallery (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   image_url text NOT NULL,
@@ -405,7 +419,7 @@ CREATE TABLE IF NOT EXISTS public.gallery (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Testimonials
+-- 3.25 Testimonials
 CREATE TABLE IF NOT EXISTS public.testimonials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -420,7 +434,7 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Services
+-- 3.26 Services (layanan yang ditampilkan di homepage)
 CREATE TABLE IF NOT EXISTS public.services (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -431,7 +445,7 @@ CREATE TABLE IF NOT EXISTS public.services (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Advantages
+-- 3.27 Advantages (keunggulan yang ditampilkan di homepage)
 CREATE TABLE IF NOT EXISTS public.advantages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -441,7 +455,7 @@ CREATE TABLE IF NOT EXISTS public.advantages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Guide Steps
+-- 3.28 Guide Steps (langkah panduan booking)
 CREATE TABLE IF NOT EXISTS public.guide_steps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   step_number integer NOT NULL,
@@ -452,7 +466,7 @@ CREATE TABLE IF NOT EXISTS public.guide_steps (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Navigation Items
+-- 3.29 Navigation Items (menu navigasi dinamis)
 CREATE TABLE IF NOT EXISTS public.navigation_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   label text NOT NULL,
@@ -464,7 +478,7 @@ CREATE TABLE IF NOT EXISTS public.navigation_items (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Floating Buttons
+-- 3.30 Floating Buttons (tombol floating WA, dll)
 CREATE TABLE IF NOT EXISTS public.floating_buttons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   label text NOT NULL,
@@ -476,7 +490,7 @@ CREATE TABLE IF NOT EXISTS public.floating_buttons (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Pages (CMS)
+-- 3.31 Pages (halaman CMS)
 CREATE TABLE IF NOT EXISTS public.pages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text,
@@ -488,7 +502,7 @@ CREATE TABLE IF NOT EXISTS public.pages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Sections (Page Builder)
+-- 3.32 Sections (page builder sections)
 CREATE TABLE IF NOT EXISTS public.sections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   page_slug text,
@@ -499,7 +513,7 @@ CREATE TABLE IF NOT EXISTS public.sections (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Settings (Key-Value)
+-- 3.33 Settings (key-value settings)
 CREATE TABLE IF NOT EXISTS public.settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   key text NOT NULL UNIQUE,
@@ -507,7 +521,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- Site Settings (JSON)
+-- 3.34 Site Settings (JSON settings dengan kategori)
 CREATE TABLE IF NOT EXISTS public.site_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   key text NOT NULL,
@@ -519,7 +533,7 @@ CREATE TABLE IF NOT EXISTS public.site_settings (
 );
 
 -- ============================================================
--- 3. ENABLE ROW LEVEL SECURITY
+-- 4. ENABLE ROW LEVEL SECURITY (semua tabel)
 -- ============================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -558,236 +572,368 @@ ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- 4. RLS POLICIES
+-- 5. RLS POLICIES (seluruh tabel)
 -- ============================================================
 
--- Profiles
+-- ==================== PROFILES ====================
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
-CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can view own profile" ON public.profiles
+  FOR SELECT USING (auth.uid() = id);
+
 DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
-CREATE POLICY "Admins can view all profiles" ON public.profiles FOR SELECT USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can view all profiles" ON public.profiles
+  FOR SELECT USING (is_admin(auth.uid()));
+
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
 
--- User Roles
+-- ==================== USER ROLES ====================
 DROP POLICY IF EXISTS "Users can view own roles" ON public.user_roles;
-CREATE POLICY "Users can view own roles" ON public.user_roles FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own roles" ON public.user_roles
+  FOR SELECT USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
-CREATE POLICY "Admins can manage user roles" ON public.user_roles FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage user roles" ON public.user_roles
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Branches
+-- ==================== BRANCHES ====================
 DROP POLICY IF EXISTS "Public can read branches" ON public.branches;
-CREATE POLICY "Public can read branches" ON public.branches FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read branches" ON public.branches
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage branches" ON public.branches;
-CREATE POLICY "Admins can manage branches" ON public.branches FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage branches" ON public.branches
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Agents
+-- ==================== AGENTS ====================
 DROP POLICY IF EXISTS "Public can read agents" ON public.agents;
-CREATE POLICY "Public can read agents" ON public.agents FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read agents" ON public.agents
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage agents" ON public.agents;
-CREATE POLICY "Admins can manage agents" ON public.agents FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage agents" ON public.agents
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Airlines
+-- ==================== AIRLINES ====================
 DROP POLICY IF EXISTS "Public can read airlines" ON public.airlines;
-CREATE POLICY "Public can read airlines" ON public.airlines FOR SELECT USING (true);
+CREATE POLICY "Public can read airlines" ON public.airlines
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage airlines" ON public.airlines;
-CREATE POLICY "Admins can manage airlines" ON public.airlines FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage airlines" ON public.airlines
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Airports
+-- ==================== AIRPORTS ====================
 DROP POLICY IF EXISTS "Public can read airports" ON public.airports;
-CREATE POLICY "Public can read airports" ON public.airports FOR SELECT USING (true);
+CREATE POLICY "Public can read airports" ON public.airports
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage airports" ON public.airports;
-CREATE POLICY "Admins can manage airports" ON public.airports FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage airports" ON public.airports
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Hotels
+-- ==================== HOTELS ====================
 DROP POLICY IF EXISTS "Public can read hotels" ON public.hotels;
-CREATE POLICY "Public can read hotels" ON public.hotels FOR SELECT USING (true);
+CREATE POLICY "Public can read hotels" ON public.hotels
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage hotels" ON public.hotels;
-CREATE POLICY "Admins can manage hotels" ON public.hotels FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage hotels" ON public.hotels
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Muthawifs
+-- ==================== MUTHAWIFS ====================
 DROP POLICY IF EXISTS "Public can read muthawifs" ON public.muthawifs;
-CREATE POLICY "Public can read muthawifs" ON public.muthawifs FOR SELECT USING (true);
+CREATE POLICY "Public can read muthawifs" ON public.muthawifs
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage muthawifs" ON public.muthawifs;
-CREATE POLICY "Admins can manage muthawifs" ON public.muthawifs FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage muthawifs" ON public.muthawifs
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Package Categories
+-- ==================== PACKAGE CATEGORIES ====================
 DROP POLICY IF EXISTS "Public can read package categories" ON public.package_categories;
-CREATE POLICY "Public can read package categories" ON public.package_categories FOR SELECT USING (true);
+CREATE POLICY "Public can read package categories" ON public.package_categories
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage categories" ON public.package_categories;
-CREATE POLICY "Admins can manage categories" ON public.package_categories FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage categories" ON public.package_categories
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Packages
+-- ==================== PACKAGES ====================
 DROP POLICY IF EXISTS "Public can read packages" ON public.packages;
-CREATE POLICY "Public can read packages" ON public.packages FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read packages" ON public.packages
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage packages" ON public.packages;
-CREATE POLICY "Admins can manage packages" ON public.packages FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage packages" ON public.packages
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Package Commissions
+-- ==================== PACKAGE COMMISSIONS ====================
 DROP POLICY IF EXISTS "Public can read package commissions" ON public.package_commissions;
-CREATE POLICY "Public can read package commissions" ON public.package_commissions FOR SELECT USING (true);
+CREATE POLICY "Public can read package commissions" ON public.package_commissions
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage package commissions" ON public.package_commissions;
-CREATE POLICY "Admins can manage package commissions" ON public.package_commissions FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage package commissions" ON public.package_commissions
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Package Departures
+-- ==================== PACKAGE DEPARTURES ====================
 DROP POLICY IF EXISTS "Public can read departures" ON public.package_departures;
-CREATE POLICY "Public can read departures" ON public.package_departures FOR SELECT USING (status = 'active');
+CREATE POLICY "Public can read departures" ON public.package_departures
+  FOR SELECT USING (status = 'active');
+
 DROP POLICY IF EXISTS "Admins can manage departures" ON public.package_departures;
-CREATE POLICY "Admins can manage departures" ON public.package_departures FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage departures" ON public.package_departures
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Departure Prices
+-- ==================== DEPARTURE PRICES ====================
 DROP POLICY IF EXISTS "Public can read departure prices" ON public.departure_prices;
-CREATE POLICY "Public can read departure prices" ON public.departure_prices FOR SELECT USING (true);
+CREATE POLICY "Public can read departure prices" ON public.departure_prices
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage prices" ON public.departure_prices;
-CREATE POLICY "Admins can manage prices" ON public.departure_prices FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage prices" ON public.departure_prices
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Itineraries
+-- ==================== ITINERARIES ====================
 DROP POLICY IF EXISTS "Public can read itineraries" ON public.itineraries;
-CREATE POLICY "Public can read itineraries" ON public.itineraries FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read itineraries" ON public.itineraries
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage itineraries" ON public.itineraries;
-CREATE POLICY "Admins can manage itineraries" ON public.itineraries FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage itineraries" ON public.itineraries
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Itinerary Days
+-- ==================== ITINERARY DAYS ====================
 DROP POLICY IF EXISTS "Public can read itinerary days" ON public.itinerary_days;
-CREATE POLICY "Public can read itinerary days" ON public.itinerary_days FOR SELECT USING (true);
+CREATE POLICY "Public can read itinerary days" ON public.itinerary_days
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage itinerary days" ON public.itinerary_days;
-CREATE POLICY "Admins can manage itinerary days" ON public.itinerary_days FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage itinerary days" ON public.itinerary_days
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Bookings
+-- ==================== BOOKINGS ====================
 DROP POLICY IF EXISTS "Users can view own bookings" ON public.bookings;
-CREATE POLICY "Users can view own bookings" ON public.bookings FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own bookings" ON public.bookings
+  FOR SELECT USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can create bookings" ON public.bookings;
-CREATE POLICY "Users can create bookings" ON public.bookings FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can create bookings" ON public.bookings
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can update own bookings" ON public.bookings;
-CREATE POLICY "Users can update own bookings" ON public.bookings FOR UPDATE USING (auth.uid() = user_id AND status = 'draft');
+CREATE POLICY "Users can update own bookings" ON public.bookings
+  FOR UPDATE USING (auth.uid() = user_id AND status = 'draft');
+
 DROP POLICY IF EXISTS "Admins can manage all bookings" ON public.bookings;
-CREATE POLICY "Admins can manage all bookings" ON public.bookings FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage all bookings" ON public.bookings
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Booking Rooms
+-- ==================== BOOKING ROOMS ====================
 DROP POLICY IF EXISTS "Users can view own booking rooms" ON public.booking_rooms;
-CREATE POLICY "Users can view own booking rooms" ON public.booking_rooms FOR SELECT USING (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = booking_rooms.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can view own booking rooms" ON public.booking_rooms
+  FOR SELECT USING (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = booking_rooms.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Users can create booking rooms" ON public.booking_rooms;
-CREATE POLICY "Users can create booking rooms" ON public.booking_rooms FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = booking_rooms.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can create booking rooms" ON public.booking_rooms
+  FOR INSERT WITH CHECK (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = booking_rooms.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Admins can manage booking rooms" ON public.booking_rooms;
-CREATE POLICY "Admins can manage booking rooms" ON public.booking_rooms FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage booking rooms" ON public.booking_rooms
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Booking Pilgrims
+-- ==================== BOOKING PILGRIMS ====================
 DROP POLICY IF EXISTS "Users can view own pilgrims" ON public.booking_pilgrims;
-CREATE POLICY "Users can view own pilgrims" ON public.booking_pilgrims FOR SELECT USING (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = booking_pilgrims.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can view own pilgrims" ON public.booking_pilgrims
+  FOR SELECT USING (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = booking_pilgrims.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Users can create pilgrims" ON public.booking_pilgrims;
-CREATE POLICY "Users can create pilgrims" ON public.booking_pilgrims FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = booking_pilgrims.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can create pilgrims" ON public.booking_pilgrims
+  FOR INSERT WITH CHECK (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = booking_pilgrims.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Admins can manage pilgrims" ON public.booking_pilgrims;
-CREATE POLICY "Admins can manage pilgrims" ON public.booking_pilgrims FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage pilgrims" ON public.booking_pilgrims
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Payments
+-- ==================== PAYMENTS ====================
 DROP POLICY IF EXISTS "Users can view own payments" ON public.payments;
-CREATE POLICY "Users can view own payments" ON public.payments FOR SELECT USING (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = payments.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can view own payments" ON public.payments
+  FOR SELECT USING (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = payments.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Users can create payments" ON public.payments;
-CREATE POLICY "Users can create payments" ON public.payments FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM bookings WHERE bookings.id = payments.booking_id AND bookings.user_id = auth.uid()));
+CREATE POLICY "Users can create payments" ON public.payments
+  FOR INSERT WITH CHECK (EXISTS (
+    SELECT 1 FROM bookings WHERE bookings.id = payments.booking_id AND bookings.user_id = auth.uid()
+  ));
+
 DROP POLICY IF EXISTS "Admins can manage payments" ON public.payments;
-CREATE POLICY "Admins can manage payments" ON public.payments FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage payments" ON public.payments
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Notifications
+-- ==================== NOTIFICATIONS ====================
 DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
-CREATE POLICY "Users can view own notifications" ON public.notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own notifications" ON public.notifications
+  FOR SELECT USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
-CREATE POLICY "Users can update own notifications" ON public.notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can update own notifications" ON public.notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Service role can create notifications" ON public.notifications;
-CREATE POLICY "Service role can create notifications" ON public.notifications FOR INSERT WITH CHECK (is_admin(auth.uid()) OR auth.uid() = user_id);
+CREATE POLICY "Service role can create notifications" ON public.notifications
+  FOR INSERT WITH CHECK (is_admin(auth.uid()) OR auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Admins can manage all notifications" ON public.notifications;
-CREATE POLICY "Admins can manage all notifications" ON public.notifications FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage all notifications" ON public.notifications
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Coupons
+-- ==================== COUPONS ====================
 DROP POLICY IF EXISTS "Public can read active coupons" ON public.coupons;
-CREATE POLICY "Public can read active coupons" ON public.coupons FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read active coupons" ON public.coupons
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage coupons" ON public.coupons;
-CREATE POLICY "Admins can manage coupons" ON public.coupons FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage coupons" ON public.coupons
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Blog Posts
+-- ==================== BLOG POSTS ====================
 DROP POLICY IF EXISTS "Public can read published blog posts" ON public.blog_posts;
-CREATE POLICY "Public can read published blog posts" ON public.blog_posts FOR SELECT USING (is_published = true);
+CREATE POLICY "Public can read published blog posts" ON public.blog_posts
+  FOR SELECT USING (is_published = true);
+
 DROP POLICY IF EXISTS "Admins can manage blog posts" ON public.blog_posts;
-CREATE POLICY "Admins can manage blog posts" ON public.blog_posts FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage blog posts" ON public.blog_posts
+  FOR ALL USING (is_admin(auth.uid()));
 
--- FAQs
+-- ==================== FAQS ====================
 DROP POLICY IF EXISTS "Anyone can view active FAQs" ON public.faqs;
-CREATE POLICY "Anyone can view active FAQs" ON public.faqs FOR SELECT USING (is_active = true);
+CREATE POLICY "Anyone can view active FAQs" ON public.faqs
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage FAQs" ON public.faqs;
-CREATE POLICY "Admins can manage FAQs" ON public.faqs FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage FAQs" ON public.faqs
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Gallery
+-- ==================== GALLERY ====================
 DROP POLICY IF EXISTS "Public can read gallery" ON public.gallery;
-CREATE POLICY "Public can read gallery" ON public.gallery FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read gallery" ON public.gallery
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage gallery" ON public.gallery;
-CREATE POLICY "Admins can manage gallery" ON public.gallery FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage gallery" ON public.gallery
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Testimonials
+-- ==================== TESTIMONIALS ====================
 DROP POLICY IF EXISTS "Public can read testimonials" ON public.testimonials;
-CREATE POLICY "Public can read testimonials" ON public.testimonials FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read testimonials" ON public.testimonials
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage testimonials" ON public.testimonials;
-CREATE POLICY "Admins can manage testimonials" ON public.testimonials FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage testimonials" ON public.testimonials
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Services
+-- ==================== SERVICES ====================
 DROP POLICY IF EXISTS "Public can read active services" ON public.services;
-CREATE POLICY "Public can read active services" ON public.services FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read active services" ON public.services
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage services" ON public.services;
-CREATE POLICY "Admins can manage services" ON public.services FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage services" ON public.services
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Advantages
+-- ==================== ADVANTAGES ====================
 DROP POLICY IF EXISTS "Public can read advantages" ON public.advantages;
-CREATE POLICY "Public can read advantages" ON public.advantages FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read advantages" ON public.advantages
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage advantages" ON public.advantages;
-CREATE POLICY "Admins can manage advantages" ON public.advantages FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage advantages" ON public.advantages
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Guide Steps
+-- ==================== GUIDE STEPS ====================
 DROP POLICY IF EXISTS "Public can read guide steps" ON public.guide_steps;
-CREATE POLICY "Public can read guide steps" ON public.guide_steps FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read guide steps" ON public.guide_steps
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage guide steps" ON public.guide_steps;
-CREATE POLICY "Admins can manage guide steps" ON public.guide_steps FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage guide steps" ON public.guide_steps
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Navigation Items
+-- ==================== NAVIGATION ITEMS ====================
 DROP POLICY IF EXISTS "Public can read active navigation items" ON public.navigation_items;
-CREATE POLICY "Public can read active navigation items" ON public.navigation_items FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read active navigation items" ON public.navigation_items
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage navigation items" ON public.navigation_items;
-CREATE POLICY "Admins can manage navigation items" ON public.navigation_items FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage navigation items" ON public.navigation_items
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Floating Buttons
+-- ==================== FLOATING BUTTONS ====================
 DROP POLICY IF EXISTS "Anyone can view active floating buttons" ON public.floating_buttons;
-CREATE POLICY "Anyone can view active floating buttons" ON public.floating_buttons FOR SELECT USING (is_active = true);
+CREATE POLICY "Anyone can view active floating buttons" ON public.floating_buttons
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage floating buttons" ON public.floating_buttons;
-CREATE POLICY "Admins can manage floating buttons" ON public.floating_buttons FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage floating buttons" ON public.floating_buttons
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Pages
+-- ==================== PAGES ====================
 DROP POLICY IF EXISTS "Public can read pages" ON public.pages;
-CREATE POLICY "Public can read pages" ON public.pages FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read pages" ON public.pages
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage pages" ON public.pages;
-CREATE POLICY "Admins can manage pages" ON public.pages FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage pages" ON public.pages
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Sections
+-- ==================== SECTIONS ====================
 DROP POLICY IF EXISTS "Public can read sections" ON public.sections;
-CREATE POLICY "Public can read sections" ON public.sections FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can read sections" ON public.sections
+  FOR SELECT USING (is_active = true);
+
 DROP POLICY IF EXISTS "Admins can manage sections" ON public.sections;
-CREATE POLICY "Admins can manage sections" ON public.sections FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage sections" ON public.sections
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Settings
+-- ==================== SETTINGS ====================
 DROP POLICY IF EXISTS "Public can read settings" ON public.settings;
-CREATE POLICY "Public can read settings" ON public.settings FOR SELECT USING (true);
+CREATE POLICY "Public can read settings" ON public.settings
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage settings" ON public.settings;
-CREATE POLICY "Admins can manage settings" ON public.settings FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage settings" ON public.settings
+  FOR ALL USING (is_admin(auth.uid()));
 
--- Site Settings
+-- ==================== SITE SETTINGS ====================
 DROP POLICY IF EXISTS "Public can read site settings" ON public.site_settings;
-CREATE POLICY "Public can read site settings" ON public.site_settings FOR SELECT USING (true);
+CREATE POLICY "Public can read site settings" ON public.site_settings
+  FOR SELECT USING (true);
+
 DROP POLICY IF EXISTS "Admins can manage site settings" ON public.site_settings;
-CREATE POLICY "Admins can manage site settings" ON public.site_settings FOR ALL USING (is_admin(auth.uid()));
+CREATE POLICY "Admins can manage site settings" ON public.site_settings
+  FOR ALL USING (is_admin(auth.uid()));
 
 -- ============================================================
--- 5. TRIGGERS
+-- 6. TRIGGERS
 -- ============================================================
 
--- Auto-create profile on user signup
+-- Auto-create profile saat user signup via auth
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -808,7 +954,7 @@ CREATE TRIGGER update_site_settings_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at();
 
--- Auto-manage departure quota on booking status change
+-- Auto-manage kuota keberangkatan saat status booking berubah
 DROP TRIGGER IF EXISTS on_booking_status_change ON public.bookings;
 CREATE TRIGGER on_booking_status_change
   AFTER UPDATE ON public.bookings
@@ -816,9 +962,10 @@ CREATE TRIGGER on_booking_status_change
   EXECUTE FUNCTION public.update_departure_quota_on_booking_paid();
 
 -- ============================================================
--- 6. STORAGE BUCKETS
+-- 7. STORAGE BUCKETS & POLICIES
 -- ============================================================
 
+-- Buat bucket
 INSERT INTO storage.buckets (id, name, public) VALUES ('payment-proofs', 'payment-proofs', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('cms-images', 'cms-images', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('gallery', 'gallery', true) ON CONFLICT (id) DO NOTHING;
@@ -826,14 +973,75 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('testimonials', 'testimon
 INSERT INTO storage.buckets (id, name, public) VALUES ('blog', 'blog', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT (id) DO NOTHING;
 
--- Storage Policies
+-- Storage policies: public read
 DROP POLICY IF EXISTS "Public read all buckets" ON storage.objects;
-CREATE POLICY "Public read all buckets" ON storage.objects FOR SELECT USING (true);
+CREATE POLICY "Public read all buckets" ON storage.objects
+  FOR SELECT USING (true);
+
+-- Storage policies: authenticated upload payment proofs
 DROP POLICY IF EXISTS "Auth users can upload payment proofs" ON storage.objects;
-CREATE POLICY "Auth users can upload payment proofs" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'payment-proofs' AND auth.role() = 'authenticated');
+CREATE POLICY "Auth users can upload payment proofs" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'payment-proofs' AND auth.role() = 'authenticated');
+
+-- Storage policies: authenticated upload avatars
 DROP POLICY IF EXISTS "Auth users can upload avatars" ON storage.objects;
-CREATE POLICY "Auth users can upload avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+CREATE POLICY "Auth users can upload avatars" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+
+-- Storage policies: admin upload CMS content
 DROP POLICY IF EXISTS "Admins can upload cms images" ON storage.objects;
-CREATE POLICY "Admins can upload cms images" ON storage.objects FOR INSERT WITH CHECK (bucket_id IN ('cms-images', 'gallery', 'testimonials', 'blog') AND EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')));
+CREATE POLICY "Admins can upload cms images" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id IN ('cms-images', 'gallery', 'testimonials', 'blog')
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+    )
+  );
+
+-- Storage policies: admin delete
 DROP POLICY IF EXISTS "Admins can delete storage objects" ON storage.objects;
-CREATE POLICY "Admins can delete storage objects" ON storage.objects FOR DELETE USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')));
+CREATE POLICY "Admins can delete storage objects" ON storage.objects
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+    )
+  );
+
+-- Storage policies: authenticated update own avatar
+DROP POLICY IF EXISTS "Auth users can update own avatar" ON storage.objects;
+CREATE POLICY "Auth users can update own avatar" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'avatars' AND auth.role() = 'authenticated'
+  );
+
+-- Storage policies: admin update CMS objects
+DROP POLICY IF EXISTS "Admins can update cms objects" ON storage.objects;
+CREATE POLICY "Admins can update cms objects" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id IN ('cms-images', 'gallery', 'testimonials', 'blog')
+    AND EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+    )
+  );
+
+-- ============================================================
+-- 8. REALTIME (opsional, aktifkan jika diperlukan)
+-- ============================================================
+
+-- Aktifkan realtime untuk notifikasi dan booking
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.bookings;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.payments;
+
+-- ============================================================
+-- SELESAI! File ini berisi:
+-- • 6 functions
+-- • 34 tabel
+-- • 34 tabel dengan RLS aktif
+-- • 70+ RLS policies
+-- • 4 triggers
+-- • 6 storage buckets + 6 storage policies
+-- ============================================================

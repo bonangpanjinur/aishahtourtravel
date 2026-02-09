@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +16,7 @@ import {
   BarChart3, PieChartIcon, Award, Building2 
 } from "lucide-react";
 import CommissionReport from "@/components/admin/CommissionReport";
+import LoadingSpinner from "@/components/ui/loading-spinner";
 
 const COLORS = ["hsl(142, 76%, 36%)", "hsl(45, 93%, 47%)", "hsl(142, 50%, 50%)", "hsl(45, 70%, 60%)", "hsl(200, 70%, 50%)"];
 
@@ -84,20 +85,24 @@ const AdminReports = () => {
     }
   };
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     const { start, end } = getDateRange();
 
-    await Promise.all([
-      fetchBookingStats(start, end),
-      fetchPackageStats(start, end),
-      fetchDepartureStats(),
-      fetchAgentStats(start, end),
-      fetchSummary(start, end),
-    ]);
-
-    setLoading(false);
-  };
+    try {
+      await Promise.all([
+        fetchBookingStats(start, end),
+        fetchPackageStats(start, end),
+        fetchDepartureStats(),
+        fetchAgentStats(start, end),
+        fetchSummary(start, end),
+      ]);
+    } catch (err: any) {
+      console.error("Error fetching report data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
 
   const fetchBookingStats = async (start: Date, end: Date) => {
     const { data } = await supabase
@@ -270,11 +275,7 @@ const AdminReports = () => {
   const formatCurrency = (value: number) => `Rp ${value.toLocaleString("id-ID")}`;
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
@@ -360,12 +361,12 @@ const AdminReports = () => {
 
       {/* Charts */}
       <Tabs defaultValue="bookings" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="bookings">Booking</TabsTrigger>
-          <TabsTrigger value="packages">Paket</TabsTrigger>
-          <TabsTrigger value="departures">Keberangkatan</TabsTrigger>
-          <TabsTrigger value="agents">Agen</TabsTrigger>
-          <TabsTrigger value="commissions">Komisi</TabsTrigger>
+        <TabsList className="w-full overflow-x-auto flex">
+          <TabsTrigger value="bookings" className="flex-1 min-w-[80px]">Booking</TabsTrigger>
+          <TabsTrigger value="packages" className="flex-1 min-w-[80px]">Paket</TabsTrigger>
+          <TabsTrigger value="departures" className="flex-1 min-w-[100px]">Keberangkatan</TabsTrigger>
+          <TabsTrigger value="agents" className="flex-1 min-w-[80px]">Agen</TabsTrigger>
+          <TabsTrigger value="commissions" className="flex-1 min-w-[80px]">Komisi</TabsTrigger>
         </TabsList>
 
         {/* Booking Stats Tab */}
@@ -547,9 +548,9 @@ const AdminReports = () => {
                             <TableCell className="text-center">{dep.remaining}</TableCell>
                             <TableCell className="text-center">
                               <Badge variant="outline" className={`
-                                ${percentage >= 80 ? "bg-green-50 text-green-700 border-green-200" :
-                                  percentage >= 50 ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                  "bg-red-50 text-red-700 border-red-200"}
+                                ${percentage >= 80 ? "bg-success/10 text-success border-success/20" :
+                                  percentage >= 50 ? "bg-warning/10 text-warning border-warning/20" :
+                                  "bg-destructive/10 text-destructive border-destructive/20"}
                               `}>
                                 {percentage}%
                               </Badge>

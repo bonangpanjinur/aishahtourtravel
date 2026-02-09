@@ -9,10 +9,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { motion } from "framer-motion";
-import { Check, Copy, ArrowLeft, CreditCard, Upload, Image, Loader2, Wallet, Clock, AlertTriangle } from "lucide-react";
+import { Check, Copy, ArrowLeft, CreditCard, Upload, Image, Loader2, Wallet, Clock, AlertTriangle, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays, addDays } from "date-fns";
 import { id as localeId } from "date-fns/locale";
+import InvoiceButton from "@/components/InvoiceButton";
+import LoadingSpinner from "@/components/ui/loading-spinner";
 
 interface BookingData {
   id: string;
@@ -207,11 +209,7 @@ const Payment = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!booking) {
@@ -270,7 +268,7 @@ const Payment = () => {
                   <div className="text-xl font-bold font-mono">{booking.booking_code}</div>
                 </div>
                 <Button variant="outline" size="icon" onClick={handleCopyCode}>
-                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
 
@@ -361,12 +359,12 @@ const Payment = () => {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="text-muted-foreground">Sudah Dibayar</div>
-                      <div className="font-semibold text-green-600">Rp {paidAmount.toLocaleString("id-ID")}</div>
+                      <div className="font-semibold text-success">Rp {paidAmount.toLocaleString("id-ID")}</div>
                     </div>
                     {pendingAmount > 0 && (
                       <div>
                         <div className="text-muted-foreground">Menunggu Verifikasi</div>
-                        <div className="font-semibold text-yellow-600">Rp {pendingAmount.toLocaleString("id-ID")}</div>
+                        <div className="font-semibold text-warning">Rp {pendingAmount.toLocaleString("id-ID")}</div>
                       </div>
                     )}
                     <div>
@@ -386,9 +384,9 @@ const Payment = () => {
                       <div key={payment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                            payment.status === "paid" ? "bg-green-100 text-green-700" :
-                            payment.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                            "bg-red-100 text-red-700"
+                            payment.status === "paid" ? "bg-success/10 text-success" :
+                            payment.status === "pending" ? "bg-warning/10 text-warning" :
+                            "bg-destructive/10 text-destructive"
                           }`}>
                             {index + 1}
                           </div>
@@ -405,9 +403,9 @@ const Payment = () => {
                         <div className="text-right">
                           <div className="font-semibold">Rp {payment.amount.toLocaleString("id-ID")}</div>
                           <div className={`text-xs ${
-                            payment.status === "paid" ? "text-green-600" :
-                            payment.status === "pending" ? "text-yellow-600" :
-                            "text-red-600"
+                            payment.status === "paid" ? "text-success" :
+                            payment.status === "pending" ? "text-warning" :
+                            "text-destructive"
                           }`}>
                             {payment.status === "paid" ? "Terverifikasi" :
                              payment.status === "pending" ? "Menunggu" : "Ditolak"}
@@ -551,23 +549,26 @@ const Payment = () => {
 
               {/* Message when all paid */}
               {remainingAmount <= 0 && (
-                <div className="p-6 text-center bg-green-50 rounded-xl">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4">
-                    <Check className="w-8 h-8 text-green-600" />
+                <div className="p-6 text-center bg-success/10 rounded-xl">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-success/20 flex items-center justify-center mb-4">
+                    <Check className="w-8 h-8 text-success" />
                   </div>
-                  <h3 className="font-bold text-lg text-green-800">Pembayaran Lunas!</h3>
-                  <p className="text-green-600 mt-2">Terima kasih, pembayaran Anda telah selesai.</p>
+                  <h3 className="font-bold text-lg text-success">Pembayaran Lunas!</h3>
+                  <p className="text-success/80 mt-2">Terima kasih, pembayaran Anda telah selesai.</p>
+                  <div className="mt-4">
+                    <InvoiceButton bookingId={booking.id} variant="default" showLabel />
+                  </div>
                 </div>
               )}
 
               {/* Message when pending */}
               {hasPendingPayment && remainingAmount > 0 && (
-                <div className="p-6 text-center bg-yellow-50 rounded-xl">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-yellow-100 flex items-center justify-center mb-4">
-                    <Loader2 className="w-8 h-8 text-yellow-600" />
+                <div className="p-6 text-center bg-warning/10 rounded-xl">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-warning/20 flex items-center justify-center mb-4">
+                    <Loader2 className="w-8 h-8 text-warning" />
                   </div>
-                  <h3 className="font-bold text-lg text-yellow-800">Menunggu Verifikasi</h3>
-                  <p className="text-yellow-600 mt-2">
+                  <h3 className="font-bold text-lg text-warning">Menunggu Verifikasi</h3>
+                  <p className="text-warning/80 mt-2">
                     Pembayaran Anda sedang diverifikasi. Silakan cek kembali nanti.
                   </p>
                 </div>

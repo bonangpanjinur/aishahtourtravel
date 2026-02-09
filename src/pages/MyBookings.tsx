@@ -7,9 +7,12 @@ import Footer from "@/components/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Calendar, Package, ArrowRight } from "lucide-react";
+import { Calendar, Package, ArrowRight, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
+import InvoiceButton from "@/components/InvoiceButton";
+import LoadingSpinner from "@/components/ui/loading-spinner";
+import EmptyState from "@/components/ui/empty-state";
 
 interface BookingItem {
   id: string;
@@ -22,10 +25,10 @@ interface BookingItem {
 }
 
 const statusColors: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  waiting_payment: "bg-yellow-100 text-yellow-800",
-  paid: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
+  draft: "bg-muted text-muted-foreground",
+  waiting_payment: "bg-warning/10 text-warning border-warning/20",
+  paid: "bg-success/10 text-success border-success/20",
+  cancelled: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
 const statusLabels: Record<string, string> = {
@@ -67,11 +70,7 @@ const MyBookings = () => {
   }, [user, authLoading, navigate]);
 
   if (loading || authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   return (
@@ -82,14 +81,16 @@ const MyBookings = () => {
           <h1 className="text-2xl md:text-3xl font-display font-bold mb-8">Booking Saya</h1>
 
           {bookings.length === 0 ? (
-            <div className="text-center py-16">
-              <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Belum ada booking</h2>
-              <p className="text-muted-foreground mb-6">Anda belum memiliki booking apapun</p>
-              <Link to="/paket">
-                <Button className="gradient-gold text-primary">Lihat Paket Umroh</Button>
-              </Link>
-            </div>
+            <EmptyState
+              icon={Package}
+              title="Belum ada booking"
+              description="Anda belum memiliki booking apapun. Mulai perjalanan umroh Anda sekarang!"
+              action={
+                <Link to="/paket">
+                  <Button className="gradient-gold text-primary">Lihat Paket Umroh</Button>
+                </Link>
+              }
+            />
           ) : (
             <div className="space-y-4">
               {bookings.map((b, index) => (
@@ -121,13 +122,20 @@ const MyBookings = () => {
                           Rp {b.total_price.toLocaleString("id-ID")}
                         </div>
                       </div>
-                      {b.status === "draft" && (
-                        <Link to={`/booking/payment/${b.id}`}>
-                          <Button size="sm" className="gradient-gold text-primary">
-                            Bayar <ArrowRight className="w-4 h-4 ml-1" />
-                          </Button>
-                        </Link>
-                      )}
+                      <div className="flex gap-2">
+                        {/* Invoice Button - show for all statuses except draft */}
+                        {b.status !== "draft" && (
+                          <InvoiceButton bookingId={b.id} />
+                        )}
+                        {/* Payment Button - show for draft and waiting_payment */}
+                        {(b.status === "draft" || b.status === "waiting_payment") && (
+                          <Link to={`/booking/payment/${b.id}`}>
+                            <Button size="sm" className="gradient-gold text-primary">
+                              Bayar <ArrowRight className="w-4 h-4 ml-1" />
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </motion.div>

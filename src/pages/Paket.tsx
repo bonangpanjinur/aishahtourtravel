@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Star, Calendar, Users, ArrowRight, Search } from "lucide-react";
+import { Star, Calendar, Users, ArrowRight, Search, Filter, X, Plane, MapPin, Building } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 
 interface Package {
   id: string;
@@ -16,35 +22,100 @@ interface Package {
   package_type: string;
   image_url: string;
   duration_days: number;
-  category: { name: string } | null;
-  hotel_makkah: { star: number } | null;
-  departures: { id: string; departure_date: string; remaining_quota: number; prices: { price: number }[] }[];
+  airline_id: string | null;
+  airport_id: string | null;
+  category_id: string | null;
+  hotel_makkah_id: string | null;
+  category: { id: string; name: string } | null;
+  hotel_makkah: { id: string; star: number; name: string } | null;
+  airline: { id: string; name: string } | null;
+  airport: { id: string; name: string; city: string } | null;
+  departures: { 
+    id: string; 
+    departure_date: string; 
+    remaining_quota: number; 
+    prices: { price: number; room_type: string }[] 
+  }[];
+}
+
+interface FilterOption {
+  id: string;
+  name: string;
+  star?: number;
+  city?: string;
 }
 
 const Paket = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+  
+  // Filter states
+  const [selectedCategory, setSelectedCategory] = useState(searchParams.get("kategori") || "all");
+  const [selectedAirline, setSelectedAirline] = useState(searchParams.get("maskapai") || "all");
+  const [selectedAirport, setSelectedAirport] = useState(searchParams.get("bandara") || "all");
+  const [selectedHotelStar, setSelectedHotelStar] = useState(searchParams.get("bintang") || "all");
+  const [selectedPackageType, setSelectedPackageType] = useState(searchParams.get("tipe") || "all");
+  const [selectedMonth, setSelectedMonth] = useState(searchParams.get("bulan") || "all");
+  
+  // Filter options
+  const [categories, setCategories] = useState<FilterOption[]>([]);
+  const [airlines, setAirlines] = useState<FilterOption[]>([]);
+  const [airports, setAirports] = useState<FilterOption[]>([]);
+  const [hotels, setHotels] = useState<FilterOption[]>([]);
+  
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {
-    const fetchPackages = async () => {
-      const { data } = await supabase
+    const fetchData = async () => {
+      // Fetch packages with relations
+      const { data: packagesData } = await supabase
         .from("packages")
         .select(`
           id, title, slug, description, package_type, image_url, duration_days,
-          category:package_categories(name),
-          hotel_makkah:hotels!packages_hotel_makkah_id_fkey(star),
-          departures:package_departures(id, departure_date, remaining_quota, prices:departure_prices(price))
+          airline_id, airport_id, category_id, hotel_makkah_id,
+          category:package_categories(id, name),
+          hotel_makkah:hotels!packages_hotel_makkah_id_fkey(id, star, name),
+          airline:airlines!packages_airline_id_fkey(id, name),
+          airport:airports!packages_airport_id_fkey(id, name, city),
+          departures:package_departures(id, departure_date, remaining_quota, prices:departure_prices(price, room_type))
         `)
         .eq("is_active", true)
         .order("created_at", { ascending: false });
 
-      setPackages((data as unknown as Package[]) || []);
+      setPackages((packagesData as unknown as Package[]) || []);
       setLoading(false);
+
+      // Fetch filter options in parallel
+      const [categoriesRes, airlinesRes, airportsRes, hotelsRes] = await Promise.all([
+        supabase.from("package_categories").select("id, name"),
+        supabase.from("airlines").select("id, name"),
+        supabase.from("airports").select("id, name, city"),
+        supabase.from("hotels").select("id, name, star").order("star", { ascending: false })
+      ]);
+
+      setCategories(categoriesRes.data || []);
+      setAirlines(airlinesRes.data || []);
+      setAirports(airportsRes.data || []);
+      setHotels(hotelsRes.data || []);
     };
 
-    fetchPackages();
+    fetchData();
   }, []);
+
+  // Update URL when filters change
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (selectedCategory !== "all") params.set("kategori", selectedCategory);
+    if (selectedAirline !== "all") params.set("maskapai", selectedAirline);
+    if (selectedAirport !== "all") params.set("bandara", selectedAirport);
+    if (selectedHotelStar !== "all") params.set("bintang", selectedHotelStar);
+    if (selectedPackageType !== "all") params.set("tipe", selectedPackageType);
+    if (selectedMonth !== "all") params.set("bulan", selectedMonth);
+    setSearchParams(params);
+  }, [search, selectedCategory, selectedAirline, selectedAirport, selectedHotelStar, selectedPackageType, selectedMonth, setSearchParams]);
 
   const getLowestPrice = (departures: Package["departures"]) => {
     if (!departures || departures.length === 0) return 0;
@@ -60,8 +131,200 @@ const Paket = () => {
     return future[0] || null;
   };
 
-  const filteredPackages = packages.filter((p) =>
-    p.title.toLowerCase().includes(search.toLowerCase())
+  // Get unique package types from data
+  const packageTypes = useMemo(() => {
+    const types = new Set(packages.map(p => p.package_type).filter(Boolean));
+    return Array.from(types);
+  }, [packages]);
+
+  // Get available months from departures
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    packages.forEach(pkg => {
+      pkg.departures?.forEach(dep => {
+        const date = new Date(dep.departure_date);
+        if (date >= new Date()) {
+          months.add(format(date, "yyyy-MM"));
+        }
+      });
+    });
+    return Array.from(months).sort();
+  }, [packages]);
+
+  // Filter packages
+  const filteredPackages = useMemo(() => {
+    return packages.filter((pkg) => {
+      // Search filter
+      if (search && !pkg.title.toLowerCase().includes(search.toLowerCase())) {
+        return false;
+      }
+      
+      // Category filter
+      if (selectedCategory !== "all" && pkg.category?.id !== selectedCategory) {
+        return false;
+      }
+      
+      // Airline filter
+      if (selectedAirline !== "all" && pkg.airline?.id !== selectedAirline) {
+        return false;
+      }
+      
+      // Airport filter
+      if (selectedAirport !== "all" && pkg.airport?.id !== selectedAirport) {
+        return false;
+      }
+      
+      // Hotel star filter
+      if (selectedHotelStar !== "all" && pkg.hotel_makkah?.star !== parseInt(selectedHotelStar)) {
+        return false;
+      }
+      
+      // Package type filter
+      if (selectedPackageType !== "all" && pkg.package_type !== selectedPackageType) {
+        return false;
+      }
+      
+      // Month filter
+      if (selectedMonth !== "all") {
+        const hasMatchingDeparture = pkg.departures?.some(dep => {
+          const depMonth = format(new Date(dep.departure_date), "yyyy-MM");
+          return depMonth === selectedMonth;
+        });
+        if (!hasMatchingDeparture) return false;
+      }
+      
+      return true;
+    });
+  }, [packages, search, selectedCategory, selectedAirline, selectedAirport, selectedHotelStar, selectedPackageType, selectedMonth]);
+
+  const activeFilterCount = [
+    selectedCategory !== "all",
+    selectedAirline !== "all",
+    selectedAirport !== "all",
+    selectedHotelStar !== "all",
+    selectedPackageType !== "all",
+    selectedMonth !== "all"
+  ].filter(Boolean).length;
+
+  const clearAllFilters = () => {
+    setSelectedCategory("all");
+    setSelectedAirline("all");
+    setSelectedAirport("all");
+    setSelectedHotelStar("all");
+    setSelectedPackageType("all");
+    setSelectedMonth("all");
+    setSearch("");
+  };
+
+  const FilterContent = () => (
+    <div className="space-y-6">
+      {/* Category */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Kategori Paket</Label>
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Kategori" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Kategori</SelectItem>
+            {categories.map(cat => (
+              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Package Type */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Jenis Paket</Label>
+        <Select value={selectedPackageType} onValueChange={setSelectedPackageType}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Jenis" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Jenis</SelectItem>
+            {packageTypes.map(type => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Hotel Star */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Bintang Hotel</Label>
+        <Select value={selectedHotelStar} onValueChange={setSelectedHotelStar}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Bintang" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Bintang</SelectItem>
+            <SelectItem value="5">⭐⭐⭐⭐⭐ Bintang 5</SelectItem>
+            <SelectItem value="4">⭐⭐⭐⭐ Bintang 4</SelectItem>
+            <SelectItem value="3">⭐⭐⭐ Bintang 3</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Airline */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Maskapai</Label>
+        <Select value={selectedAirline} onValueChange={setSelectedAirline}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Maskapai" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Maskapai</SelectItem>
+            {airlines.map(airline => (
+              <SelectItem key={airline.id} value={airline.id}>{airline.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Airport */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Bandara Keberangkatan</Label>
+        <Select value={selectedAirport} onValueChange={setSelectedAirport}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Bandara" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Bandara</SelectItem>
+            {airports.map(airport => (
+              <SelectItem key={airport.id} value={airport.id}>
+                {airport.name} ({airport.city})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Departure Month */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Bulan Keberangkatan</Label>
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger>
+            <SelectValue placeholder="Semua Bulan" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Bulan</SelectItem>
+            {availableMonths.map(month => (
+              <SelectItem key={month} value={month}>
+                {format(new Date(month + "-01"), "MMMM yyyy", { locale: idLocale })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {activeFilterCount > 0 && (
+        <Button variant="outline" onClick={clearAllFilters} className="w-full">
+          <X className="w-4 h-4 mr-2" />
+          Hapus Filter ({activeFilterCount})
+        </Button>
+      )}
+    </div>
   );
 
   return (
@@ -95,87 +358,203 @@ const Paket = () => {
           </div>
         </section>
 
-        {/* Packages Grid */}
+        {/* Main Content */}
         <section className="section-padding bg-background">
           <div className="container-custom">
-            {loading ? (
-              <div className="flex justify-center py-16">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
+            <div className="flex flex-col lg:flex-row gap-8">
+              {/* Sidebar Filters - Desktop */}
+              <aside className="hidden lg:block w-72 flex-shrink-0">
+                <div className="sticky top-24 bg-card border border-border rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-display font-bold text-foreground flex items-center gap-2">
+                      <Filter className="w-5 h-5" />
+                      Filter Paket
+                    </h3>
+                    {activeFilterCount > 0 && (
+                      <Badge variant="secondary">{activeFilterCount}</Badge>
+                    )}
+                  </div>
+                  <FilterContent />
+                </div>
+              </aside>
+
+              {/* Mobile Filter Button */}
+              <div className="lg:hidden flex items-center justify-between mb-4">
+                <p className="text-muted-foreground">
+                  {filteredPackages.length} paket ditemukan
+                </p>
+                <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Filter className="w-4 h-4 mr-2" />
+                      Filter
+                      {activeFilterCount > 0 && (
+                        <Badge variant="secondary" className="ml-2">{activeFilterCount}</Badge>
+                      )}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-80">
+                    <SheetHeader>
+                      <SheetTitle className="flex items-center gap-2">
+                        <Filter className="w-5 h-5" />
+                        Filter Paket
+                      </SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-6">
+                      <FilterContent />
+                    </div>
+                  </SheetContent>
+                </Sheet>
               </div>
-            ) : filteredPackages.length === 0 ? (
-              <div className="text-center py-16">
-                <p className="text-muted-foreground">Belum ada paket tersedia</p>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredPackages.map((pkg, index) => {
-                  const lowestPrice = getLowestPrice(pkg.departures);
-                  const nextDep = getNextDeparture(pkg.departures);
 
-                  return (
-                    <motion.div
-                      key={pkg.id}
-                      initial={{ opacity: 0, y: 30 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="rounded-2xl overflow-hidden bg-card border border-border hover:border-gold/30 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
-                    >
-                      <div className="relative h-48 overflow-hidden">
-                        <img
-                          src={pkg.image_url || "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=600&q=80"}
-                          alt={pkg.title}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-card to-transparent" />
-                        <div className="absolute bottom-3 left-4">
-                          <span className="bg-primary/90 text-primary-foreground text-xs px-3 py-1 rounded-full">
-                            {pkg.category?.name || pkg.package_type || "Reguler"}
-                          </span>
-                        </div>
-                      </div>
+              {/* Packages Grid */}
+              <div className="flex-1">
+                {/* Active Filters Display */}
+                {activeFilterCount > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {selectedCategory !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        {categories.find(c => c.id === selectedCategory)?.name}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedCategory("all")} />
+                      </Badge>
+                    )}
+                    {selectedPackageType !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        {selectedPackageType}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedPackageType("all")} />
+                      </Badge>
+                    )}
+                    {selectedHotelStar !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        <Building className="w-3 h-3" /> Bintang {selectedHotelStar}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedHotelStar("all")} />
+                      </Badge>
+                    )}
+                    {selectedAirline !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        <Plane className="w-3 h-3" /> {airlines.find(a => a.id === selectedAirline)?.name}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedAirline("all")} />
+                      </Badge>
+                    )}
+                    {selectedAirport !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        <MapPin className="w-3 h-3" /> {airports.find(a => a.id === selectedAirport)?.city}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedAirport("all")} />
+                      </Badge>
+                    )}
+                    {selectedMonth !== "all" && (
+                      <Badge variant="secondary" className="gap-1">
+                        <Calendar className="w-3 h-3" /> {format(new Date(selectedMonth + "-01"), "MMM yyyy", { locale: idLocale })}
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedMonth("all")} />
+                      </Badge>
+                    )}
+                  </div>
+                )}
 
-                      <div className="p-6">
-                        <h3 className="text-xl font-display font-bold text-foreground">{pkg.title}</h3>
+                <p className="text-muted-foreground mb-6 hidden lg:block">
+                  {filteredPackages.length} paket ditemukan
+                </p>
 
-                        <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" /> {pkg.duration_days} Hari
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Star className="w-4 h-4" /> Bintang {pkg.hotel_makkah?.star || 4}
-                          </span>
-                          {nextDep && (
-                            <span className="flex items-center gap-1">
-                              <Users className="w-4 h-4" /> {nextDep.remaining_quota} seat
-                            </span>
-                          )}
-                        </div>
+                {loading ? (
+                  <div className="flex justify-center py-16">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
+                  </div>
+                ) : filteredPackages.length === 0 ? (
+                  <div className="text-center py-16 bg-card border border-border rounded-xl">
+                    <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-4">Tidak ada paket yang sesuai filter</p>
+                    <Button variant="outline" onClick={clearAllFilters}>
+                      Hapus Semua Filter
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {filteredPackages.map((pkg, index) => {
+                      const lowestPrice = getLowestPrice(pkg.departures);
+                      const nextDep = getNextDeparture(pkg.departures);
 
-                        <p className="text-sm text-muted-foreground mt-3 line-clamp-2">
-                          {pkg.description || "Paket umroh dengan pelayanan terbaik"}
-                        </p>
+                      return (
+                        <motion.div
+                          key={pkg.id}
+                          initial={{ opacity: 0, y: 30 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          className="rounded-2xl overflow-hidden bg-card border border-border hover:border-gold/30 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                        >
+                          <div className="relative h-48 overflow-hidden">
+                            <img
+                              src={pkg.image_url || "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=600&q=80"}
+                              alt={pkg.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-card to-transparent" />
+                            <div className="absolute bottom-3 left-4 flex gap-2">
+                              <span className="bg-primary/90 text-primary-foreground text-xs px-3 py-1 rounded-full">
+                                {pkg.category?.name || pkg.package_type || "Reguler"}
+                              </span>
+                            </div>
+                            {nextDep && (
+                              <div className="absolute top-3 right-3 bg-card/90 backdrop-blur-sm text-xs px-2 py-1 rounded-full">
+                                {format(new Date(nextDep.departure_date), "d MMM", { locale: idLocale })}
+                              </div>
+                            )}
+                          </div>
 
-                        <div className="mt-6 pt-4 border-t border-border flex items-end justify-between">
-                          <div>
-                            <span className="text-xs text-muted-foreground">Mulai dari</span>
-                            <div className="text-2xl font-display font-bold text-foreground">
-                              Rp {lowestPrice.toLocaleString("id-ID")}
+                          <div className="p-5">
+                            <h3 className="text-lg font-display font-bold text-foreground line-clamp-1">{pkg.title}</h3>
+
+                            <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5" /> {pkg.duration_days} Hari
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Star className="w-3.5 h-3.5" /> Bintang {pkg.hotel_makkah?.star || 4}
+                              </span>
+                              {nextDep && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3.5 h-3.5" /> {nextDep.remaining_quota} seat
+                                </span>
+                              )}
+                            </div>
+
+                            {(pkg.airline || pkg.airport) && (
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                {pkg.airline && (
+                                  <span className="text-xs bg-muted px-2 py-1 rounded flex items-center gap-1">
+                                    <Plane className="w-3 h-3" /> {pkg.airline.name}
+                                  </span>
+                                )}
+                                {pkg.airport && (
+                                  <span className="text-xs bg-muted px-2 py-1 rounded flex items-center gap-1">
+                                    <MapPin className="w-3 h-3" /> {pkg.airport.city}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="mt-4 pt-4 border-t border-border flex items-end justify-between">
+                              <div>
+                                <span className="text-xs text-muted-foreground">Mulai dari</span>
+                                <div className="text-xl font-display font-bold text-foreground">
+                                  Rp {lowestPrice.toLocaleString("id-ID")}
+                                </div>
+                              </div>
+                              <Link to={`/paket/${pkg.slug}`}>
+                                <Button size="sm" className="gradient-gold text-primary">
+                                  Detail
+                                  <ArrowRight className="w-4 h-4 ml-1" />
+                                </Button>
+                              </Link>
                             </div>
                           </div>
-                          <Link to={`/paket/${pkg.slug}`}>
-                            <Button size="sm" className="gradient-gold text-primary">
-                              Detail
-                              <ArrowRight className="w-4 h-4 ml-1" />
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </section>
       </main>

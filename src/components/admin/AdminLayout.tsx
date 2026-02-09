@@ -18,7 +18,8 @@ import {
   Menu,
   Image,
   HelpCircle,
-  MessageCircle
+  MessageCircle,
+  BookOpen
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -41,6 +42,7 @@ const menuItems = [
   { label: "Testimoni", href: "/admin/testimonials", icon: FileText },
   { label: "FAQ", href: "/admin/faq", icon: HelpCircle },
   { label: "Floating Button", href: "/admin/floating-buttons", icon: MessageCircle },
+  { label: "Blog", href: "/admin/blog", icon: BookOpen },
   { label: "Halaman CMS", href: "/admin/pages", icon: FileText },
   { label: "Pengaturan", href: "/admin/settings", icon: Settings },
 ];

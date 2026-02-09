@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Check, Copy, ArrowLeft, CreditCard, Upload } from "lucide-react";
+import { Check, Copy, ArrowLeft, CreditCard, Upload, Image, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface BookingData {
@@ -23,9 +23,13 @@ const Payment = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -63,15 +67,57 @@ const Payment = () => {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !booking) return;
+
+    // Validate file
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: "Format tidak didukung", description: "Gunakan JPG, PNG, atau WebP", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File terlalu besar", description: "Maksimal 5MB", variant: "destructive" });
+      return;
+    }
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = () => setProofPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    // Upload
+    setUploading(true);
+    const fileName = `${booking.booking_code}-${Date.now()}.${file.name.split(".").pop()}`;
+    
+    const { data, error } = await supabase.storage
+      .from("payment-proofs")
+      .upload(fileName, file, { upsert: true });
+
+    if (error) {
+      toast({ title: "Gagal upload", description: error.message, variant: "destructive" });
+      setUploading(false);
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from("payment-proofs").getPublicUrl(data.path);
+    setProofUrl(publicUrl);
+    setUploading(false);
+    toast({ title: "Bukti pembayaran berhasil diupload!" });
+  };
+
   const handleConfirmPayment = async () => {
     if (!booking) return;
 
-    // Create payment record
+    // Create payment record with proof
     await supabase.from("payments").insert({
       booking_id: booking.id,
       payment_method: "transfer",
       amount: booking.total_price,
       status: "pending",
+      proof_url: proofUrl,
     });
 
     // Update booking status
@@ -176,14 +222,67 @@ const Payment = () => {
                 </div>
               </div>
 
+              {/* Upload Proof */}
+              <div className="border-2 border-dashed border-border rounded-xl p-6">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                />
+                
+                {proofPreview ? (
+                  <div className="space-y-4">
+                    <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+                      <img src={proofPreview} alt="Bukti pembayaran" className="w-full h-full object-contain" />
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengupload...</>
+                      ) : (
+                        <><Image className="w-4 h-4 mr-2" /> Ganti Bukti Pembayaran</>
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="w-full text-center"
+                  >
+                    <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center mb-4">
+                      {uploading ? (
+                        <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+                      ) : (
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="font-semibold">Upload Bukti Pembayaran</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      JPG, PNG, atau WebP (maks. 5MB)
+                    </div>
+                  </button>
+                )}
+              </div>
+
               <div className="text-sm text-muted-foreground text-center">
-                Setelah transfer, klik tombol di bawah untuk konfirmasi pembayaran.
+                Setelah transfer, upload bukti pembayaran dan klik konfirmasi.
                 Tim kami akan memverifikasi dalam 1x24 jam.
               </div>
 
-              <Button onClick={handleConfirmPayment} className="w-full gradient-gold text-primary font-semibold">
+              <Button 
+                onClick={handleConfirmPayment} 
+                className="w-full gradient-gold text-primary font-semibold"
+                disabled={!proofUrl || uploading}
+              >
                 <Upload className="w-4 h-4 mr-2" />
-                Konfirmasi Sudah Transfer
+                Konfirmasi Pembayaran
               </Button>
             </div>
           </motion.div>

@@ -9,7 +9,6 @@ const AdminPlaceholder = ({ title }: { title: string }) => {
   );
 };
 
-export const AdminDepartures = () => <AdminPlaceholder title="Keberangkatan" />;
 export const AdminPilgrims = () => <AdminPlaceholder title="Data Jemaah" />;
 export const AdminAgents = () => <AdminPlaceholder title="Agen" />;
 export const AdminPages = () => <AdminPlaceholder title="Halaman CMS" />;

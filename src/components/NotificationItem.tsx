@@ -11,11 +11,11 @@ interface NotificationItemProps {
 const getIcon = (type: string) => {
   switch (type) {
     case "dp_reminder":
-      return <Clock className="w-4 h-4 text-yellow-500" />;
+      return <Clock className="w-4 h-4 text-warning" />;
     case "full_reminder":
-      return <CreditCard className="w-4 h-4 text-blue-500" />;
+      return <CreditCard className="w-4 h-4 text-primary" />;
     case "overdue":
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
+      return <AlertCircle className="w-4 h-4 text-destructive" />;
     default:
       return <Bell className="w-4 h-4 text-muted-foreground" />;
   }

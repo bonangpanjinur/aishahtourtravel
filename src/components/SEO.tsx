@@ -20,8 +20,8 @@ interface BrandingSettings {
 }
 
 const defaultBranding: BrandingSettings = {
-  company_name: "UmrohPlus",
-  tagline: "Travel & Tours",
+  company_name: "Aishah Tour & Travel",
+  tagline: "Solusi Perjalanan Ibadah Anda",
 };
 
 const SEO = ({

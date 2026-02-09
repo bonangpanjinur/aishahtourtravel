@@ -27,6 +27,7 @@ const menuItems = [
   { label: "Itinerary", href: "/admin/itineraries", icon: MapPin },
   { label: "Booking", href: "/admin/bookings", icon: Ticket },
   { label: "Pembayaran", href: "/admin/payments", icon: Ticket },
+  { label: "Laporan", href: "/admin/reports", icon: FileText },
   { label: "Jemaah", href: "/admin/pilgrims", icon: Users },
   { label: "Cabang", href: "/admin/branches", icon: Building2 },
   { label: "Agen", href: "/admin/agents", icon: User },

@@ -4,65 +4,7 @@
 -- ============================================
 
 -- ============================================
--- 1. HELPER FUNCTIONS
--- ============================================
-
--- Function to check if user is admin
-CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM user_roles
-    WHERE user_id = _user_id AND role = 'admin'
-  );
-$$;
-
--- Function to check if user has specific role
-CREATE OR REPLACE FUNCTION public.has_role(_role text, _user_id uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM user_roles
-    WHERE user_id = _user_id AND role = _role
-  );
-$$;
-
--- Function to generate booking code
-CREATE OR REPLACE FUNCTION public.generate_booking_code()
-RETURNS text
-LANGUAGE plpgsql
-SET search_path = public
-AS $$
-DECLARE
-  new_code TEXT;
-  code_exists BOOLEAN;
-BEGIN
-  LOOP
-    new_code := 'UMR' || TO_CHAR(NOW(), 'YYMMDD') || LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');
-    SELECT EXISTS(SELECT 1 FROM bookings WHERE booking_code = new_code) INTO code_exists;
-    EXIT WHEN NOT code_exists;
-  END LOOP;
-  RETURN new_code;
-END;
-$$;
-
--- Function to update timestamps
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SET search_path = public;
-
--- ============================================
--- 2. TABLES
+-- 1. TABLES
 -- ============================================
 
 -- User Roles
@@ -432,6 +374,64 @@ CREATE TABLE IF NOT EXISTS public.site_settings (
   updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(key, category)
 );
+
+-- ============================================
+-- 2. HELPER FUNCTIONS
+-- ============================================
+
+-- Function to check if user is admin
+CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM user_roles
+    WHERE user_id = _user_id AND role = 'admin'
+  );
+$$;
+
+-- Function to check if user has specific role
+CREATE OR REPLACE FUNCTION public.has_role(_role text, _user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM user_roles
+    WHERE user_id = _user_id AND role = _role
+  );
+$$;
+
+-- Function to generate booking code
+CREATE OR REPLACE FUNCTION public.generate_booking_code()
+RETURNS text
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  new_code TEXT;
+  code_exists BOOLEAN;
+BEGIN
+  LOOP
+    new_code := 'UMR' || TO_CHAR(NOW(), 'YYMMDD') || LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');
+    SELECT EXISTS(SELECT 1 FROM bookings WHERE booking_code = new_code) INTO code_exists;
+    EXIT WHEN NOT code_exists;
+  END LOOP;
+  RETURN new_code;
+END;
+$$;
+
+-- Function to update timestamps
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ============================================
 -- 3. TRIGGERS

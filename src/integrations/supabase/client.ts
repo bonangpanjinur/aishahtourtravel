@@ -1,21 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from './types';
+import { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Mengambil variabel dari environment vite
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  console.warn("Missing Supabase environment variables. Please check your .env file.");
+// Validasi sederhana untuk memudahkan debugging
+// Jika variabel ini tidak ada (undefined), aplikasi biasanya akan crash tanpa pesan yang jelas
+if (!supabaseUrl || !supabaseKey) {
+  console.error(
+    "⚠️ KONFIGURASI SUPABASE HILANG: Pastikan Anda memiliki file .env dengan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY."
+  );
 }
 
+// Gunakan fallback ke string kosong atau placeholder agar aplikasi tidak langsung crash saat load awal,
+// sehingga Anda masih bisa melihat UI dan pesan error di console.
 export const supabase = createClient<Database>(
-  SUPABASE_URL || '',
-  SUPABASE_PUBLISHABLE_KEY || '',
-  {
-    auth: {
-      storage: localStorage,
-      persistSession: true,
-      autoRefreshToken: true,
-    }
-  }
+  supabaseUrl || 'https://project-placeholder.supabase.co',
+  supabaseKey || 'anon-key-placeholder'
 );

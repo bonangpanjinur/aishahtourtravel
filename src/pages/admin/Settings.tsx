@@ -60,9 +60,9 @@ interface SeoSettings {
 }
 
 interface BackgroundSettings {
-  type: "pattern" | "image";
+  type: "pattern" | "image" | "none";
   image_url: string;
-  pattern_type: "islamic" | "dots" | "grid";
+  pattern_type: "islamic" | "dots" | "grid" | "none";
 }
 
 interface TemplateSettings {
@@ -900,16 +900,20 @@ const AdminSettings = () => {
                 <Label>Tipe Background</Label>
                 <Select
                   value={background.type}
-                  onValueChange={(val: "pattern" | "image") => setBackground({ ...background, type: val })}
+                  onValueChange={(val: "pattern" | "image" | "none") => setBackground({ ...background, type: val })}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">Tanpa Background (Polos)</SelectItem>
                     <SelectItem value="pattern">Pattern (Islamic Pattern)</SelectItem>
                     <SelectItem value="image">Gambar (Masjidil Haram/Nabawi)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pilih "Tanpa Background" untuk tampilan bersih tanpa pattern
+                </p>
               </div>
 
               {background.type === "pattern" && (
@@ -917,12 +921,13 @@ const AdminSettings = () => {
                   <Label>Jenis Pattern</Label>
                   <Select
                     value={background.pattern_type}
-                    onValueChange={(val: "islamic" | "dots" | "grid") => setBackground({ ...background, pattern_type: val })}
+                    onValueChange={(val: "islamic" | "dots" | "grid" | "none") => setBackground({ ...background, pattern_type: val })}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">Tanpa Pattern</SelectItem>
                       <SelectItem value="islamic">Islamic Pattern (Diamond)</SelectItem>
                       <SelectItem value="dots">Dots Pattern</SelectItem>
                       <SelectItem value="grid">Grid Pattern</SelectItem>

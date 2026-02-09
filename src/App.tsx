@@ -17,12 +17,15 @@ import NotFound from "./pages/NotFound";
 import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminPackages from "./pages/admin/Packages";
+import AdminDepartures from "./pages/admin/Departures";
 import AdminBookings from "./pages/admin/Bookings";
+import AdminPayments from "./pages/admin/Payments";
+import AdminItineraries from "./pages/admin/Itineraries";
 import AdminHotels from "./pages/admin/Hotels";
 import AdminAirlines from "./pages/admin/Airlines";
 import AdminAirports from "./pages/admin/Airports";
 import AdminBranches from "./pages/admin/Branches";
-import { AdminDepartures, AdminPilgrims, AdminAgents, AdminPages, AdminSettings } from "./pages/admin/Placeholder";
+import { AdminPilgrims, AdminAgents, AdminPages, AdminSettings } from "./pages/admin/Placeholder";
 
 const queryClient = new QueryClient();
 
@@ -48,7 +51,9 @@ const App = () => (
               <Route index element={<AdminDashboard />} />
               <Route path="packages" element={<AdminPackages />} />
               <Route path="departures" element={<AdminDepartures />} />
+              <Route path="itineraries" element={<AdminItineraries />} />
               <Route path="bookings" element={<AdminBookings />} />
+              <Route path="payments" element={<AdminPayments />} />
               <Route path="pilgrims" element={<AdminPilgrims />} />
               <Route path="branches" element={<AdminBranches />} />
               <Route path="agents" element={<AdminAgents />} />

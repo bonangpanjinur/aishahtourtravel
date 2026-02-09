@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
-import { Search, Eye, Users, Calendar, Phone, Mail, CreditCard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Search, Eye, Users, Calendar, Phone, Mail, CreditCard } from "lucide-react";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { useIsMobile } from "@/hooks/use-mobile";
+import LoadingSpinner from "@/components/ui/loading-spinner";
+import EmptyState from "@/components/ui/empty-state";
+import ErrorAlert from "@/components/ui/error-alert";
 
 interface Pilgrim {
   id: string;
@@ -32,38 +35,52 @@ interface Pilgrim {
   } | null;
 }
 
+const getStatusBadge = (status: string | undefined) => {
+  switch (status) {
+    case "paid": return <Badge className="bg-success/10 text-success border-success/20">Lunas</Badge>;
+    case "waiting_payment": return <Badge className="bg-warning/10 text-warning border-warning/20">Menunggu</Badge>;
+    case "cancelled": return <Badge className="bg-destructive/10 text-destructive border-destructive/20">Batal</Badge>;
+    default: return <Badge variant="outline">{status || "draft"}</Badge>;
+  }
+};
+
 const AdminPilgrims = () => {
   const [pilgrims, setPilgrims] = useState<Pilgrim[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedPilgrim, setSelectedPilgrim] = useState<Pilgrim | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const { toast } = useToast();
+  const isMobile = useIsMobile();
+
+  const fetchPilgrims = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("booking_pilgrims")
+        .select(`
+          *,
+          booking:bookings(
+            id, booking_code, status, total_price,
+            package:packages(title),
+            departure:package_departures(departure_date)
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (fetchError) throw fetchError;
+      setPilgrims((data as unknown as Pilgrim[]) || []);
+    } catch (err: any) {
+      setError(err.message || "Gagal memuat data jemaah");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchPilgrims();
-  }, []);
-
-  const fetchPilgrims = async () => {
-    const { data, error } = await supabase
-      .from("booking_pilgrims")
-      .select(`
-        *,
-        booking:bookings(
-          id, booking_code, status, total_price,
-          package:packages(title),
-          departure:package_departures(departure_date)
-        )
-      `)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast({ title: "Gagal memuat data", description: error.message, variant: "destructive" });
-    } else {
-      setPilgrims((data as unknown as Pilgrim[]) || []);
-    }
-    setLoading(false);
-  };
+  }, [fetchPilgrims]);
 
   const filteredPilgrims = pilgrims.filter((p) => {
     const searchLower = search.toLowerCase();
@@ -82,15 +99,6 @@ const AdminPilgrims = () => {
     setDetailOpen(true);
   };
 
-  const getStatusColor = (status: string | undefined) => {
-    switch (status) {
-      case "confirmed": return "bg-green-100 text-green-800";
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -100,25 +108,47 @@ const AdminPilgrims = () => {
         </div>
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari nama, NIK, paspor, booking..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+          <Input placeholder="Cari nama, NIK, paspor, booking..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold"></div>
-        </div>
+        <LoadingSpinner />
+      ) : error ? (
+        <ErrorAlert message={error} onRetry={fetchPilgrims} />
       ) : filteredPilgrims.length === 0 ? (
-        <div className="text-center py-16">
-          <Users className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
-          <p className="text-muted-foreground">
-            {search ? "Tidak ada jemaah yang cocok dengan pencarian" : "Belum ada data jemaah"}
-          </p>
+        <EmptyState
+          icon={Users}
+          title={search ? "Tidak Ditemukan" : "Belum Ada Jemaah"}
+          description={search ? "Tidak ada jemaah yang cocok dengan pencarian" : "Data jemaah akan muncul di sini"}
+        />
+      ) : isMobile ? (
+        <div className="space-y-3">
+          {filteredPilgrims.map((pilgrim) => (
+            <div key={pilgrim.id} className="bg-card border border-border rounded-xl p-4 space-y-3" onClick={() => showDetail(pilgrim)}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold">{pilgrim.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pilgrim.gender === "male" ? "Laki-laki" : pilgrim.gender === "female" ? "Perempuan" : "-"}
+                  </p>
+                </div>
+                {getStatusBadge(pilgrim.booking?.status)}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">NIK:</span> {pilgrim.nik || "-"}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Paspor:</span> {pilgrim.passport_number || "-"}
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <Badge variant="outline" className="font-mono text-xs">{pilgrim.booking?.booking_code || "-"}</Badge>
+                <span className="text-muted-foreground">{pilgrim.booking?.package?.title || "-"}</span>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -159,18 +189,12 @@ const AdminPilgrims = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono">
-                        {pilgrim.booking?.booking_code || "-"}
-                      </Badge>
+                      <Badge variant="outline" className="font-mono">{pilgrim.booking?.booking_code || "-"}</Badge>
                     </TableCell>
                     <TableCell>
                       <p className="text-sm">{pilgrim.booking?.package?.title || "-"}</p>
                     </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(pilgrim.booking?.status)}>
-                        {pilgrim.booking?.status || "draft"}
-                      </Badge>
-                    </TableCell>
+                    <TableCell>{getStatusBadge(pilgrim.booking?.status)}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" onClick={() => showDetail(pilgrim)}>
                         <Eye className="w-4 h-4" />
@@ -192,7 +216,6 @@ const AdminPilgrims = () => {
           </DialogHeader>
           {selectedPilgrim && (
             <div className="space-y-6">
-              {/* Personal Info */}
               <div>
                 <h4 className="font-semibold text-sm text-muted-foreground mb-3">INFORMASI PRIBADI</h4>
                 <div className="space-y-3">
@@ -226,7 +249,6 @@ const AdminPilgrims = () => {
                 </div>
               </div>
 
-              {/* Documents */}
               <div>
                 <h4 className="font-semibold text-sm text-muted-foreground mb-3">DOKUMEN</h4>
                 <div className="space-y-3">
@@ -256,7 +278,6 @@ const AdminPilgrims = () => {
                 </div>
               </div>
 
-              {/* Booking Info */}
               {selectedPilgrim.booking && (
                 <div>
                   <h4 className="font-semibold text-sm text-muted-foreground mb-3">INFORMASI BOOKING</h4>
@@ -277,11 +298,9 @@ const AdminPilgrims = () => {
                     )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Status</span>
-                      <Badge className={getStatusColor(selectedPilgrim.booking.status)}>
-                        {selectedPilgrim.booking.status}
-                      </Badge>
+                      {getStatusBadge(selectedPilgrim.booking.status)}
                     </div>
-                    <div className="flex justify-between pt-2 border-t">
+                    <div className="flex justify-between pt-2 border-t border-border mt-2">
                       <span className="text-muted-foreground">Total Harga</span>
                       <span className="font-semibold">
                         Rp {selectedPilgrim.booking.total_price?.toLocaleString("id-ID") || 0}

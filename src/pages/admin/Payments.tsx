@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { Eye, CheckCircle, XCircle, Image, DollarSign, FileText, Download, ZoomIn } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import EmptyState from "@/components/ui/empty-state";
 import ErrorAlert from "@/components/ui/error-alert";
@@ -38,12 +39,13 @@ const AdminPayments = () => {
   const [imageOpen, setImageOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchPayments();
   }, []);
 
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     setError(null);
     setLoading(true);
     
@@ -63,7 +65,7 @@ const AdminPayments = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleVerify = async (payment: Payment, approve: boolean) => {
     if (!confirm(approve ? "Setujui pembayaran ini?" : "Tolak pembayaran ini?")) return;
@@ -241,6 +243,43 @@ const AdminPayments = () => {
         />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          {isMobile ? (
+            <div className="divide-y divide-border">
+              {payments.map((payment) => (
+                <div key={payment.id} className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-semibold text-sm">{payment.booking?.booking_code || "-"}</span>
+                    {getStatusBadge(payment.status || "pending")}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">{getPaymentTypeLabel(payment.payment_type)}</Badge>
+                    <span className="font-semibold">Rp {payment.amount.toLocaleString("id-ID")}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span className="capitalize">{payment.payment_method || "-"}</span>
+                    <span>{format(new Date(payment.created_at), "d MMM yyyy HH:mm", { locale: localeId })}</span>
+                  </div>
+                  <div className="flex gap-2 pt-2 border-t border-border">
+                    {payment.proof_url && (
+                      <Button variant="ghost" size="sm" className="flex-1 text-info" onClick={() => { setSelectedPayment(payment); setImageOpen(true); }}>
+                        <Image className="w-4 h-4 mr-1" /> Bukti
+                      </Button>
+                    )}
+                    {payment.status === "pending" && (
+                      <>
+                        <Button variant="ghost" size="sm" className="flex-1 text-destructive" onClick={() => handleVerify(payment, false)}>
+                          <XCircle className="w-4 h-4 mr-1" /> Tolak
+                        </Button>
+                        <Button variant="ghost" size="sm" className="flex-1 text-success" onClick={() => handleVerify(payment, true)}>
+                          <CheckCircle className="w-4 h-4 mr-1" /> Setujui
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -258,61 +297,32 @@ const AdminPayments = () => {
               <TableBody>
                 {payments.map((payment) => (
                   <TableRow key={payment.id}>
-                    <TableCell className="font-mono font-semibold">
-                      {payment.booking?.booking_code || "-"}
+                    <TableCell className="font-mono font-semibold">{payment.booking?.booking_code || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{getPaymentTypeLabel(payment.payment_type)}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {getPaymentTypeLabel(payment.payment_type)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-semibold">Rp {payment.amount.toLocaleString("id-ID")}</span>
-                      </div>
+                      <span className="font-semibold">Rp {payment.amount.toLocaleString("id-ID")}</span>
                     </TableCell>
                     <TableCell className="capitalize">{payment.payment_method || "-"}</TableCell>
                     <TableCell>
                       {payment.proof_url ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedPayment(payment);
-                            setImageOpen(true);
-                          }}
-                          className="text-info hover:text-info/80"
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => { setSelectedPayment(payment); setImageOpen(true); }} className="text-info hover:text-info/80">
                           <Image className="w-4 h-4 mr-1" /> Lihat
                         </Button>
                       ) : (
                         <span className="text-muted-foreground text-sm">Tidak ada</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {format(new Date(payment.created_at), "d MMM yyyy HH:mm", { locale: localeId })}
-                    </TableCell>
+                    <TableCell className="text-sm">{format(new Date(payment.created_at), "d MMM yyyy HH:mm", { locale: localeId })}</TableCell>
                     <TableCell>{getStatusBadge(payment.status || "pending")}</TableCell>
                     <TableCell className="text-right">
                       {payment.status === "pending" && (
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                            onClick={() => handleVerify(payment, false)}
-                            title="Tolak"
-                          >
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 hover:bg-destructive/10" onClick={() => handleVerify(payment, false)} title="Tolak">
                             <XCircle className="w-4 h-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-success hover:text-success/80 hover:bg-success/10"
-                            onClick={() => handleVerify(payment, true)}
-                            title="Setujui"
-                          >
+                          <Button variant="ghost" size="icon" className="text-success hover:text-success/80 hover:bg-success/10" onClick={() => handleVerify(payment, true)} title="Setujui">
                             <CheckCircle className="w-4 h-4" />
                           </Button>
                         </div>
@@ -323,6 +333,7 @@ const AdminPayments = () => {
               </TableBody>
             </Table>
           </div>
+          )}
         </div>
       )}
     </div>

@@ -68,8 +68,6 @@ const PackageDetail = () => {
             prices:departure_prices(room_type, price)
           `)
           .eq("package_id", pkgData.id)
-          .eq("status", "active")
-          .gte("departure_date", new Date().toISOString().split("T")[0])
           .order("departure_date", { ascending: true });
 
         setDepartures((depData as unknown as Departure[]) || []);

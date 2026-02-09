@@ -21,6 +21,7 @@ import AdminDepartures from "./pages/admin/Departures";
 import AdminBookings from "./pages/admin/Bookings";
 import AdminPayments from "./pages/admin/Payments";
 import AdminItineraries from "./pages/admin/Itineraries";
+import AdminReports from "./pages/admin/Reports";
 import AdminHotels from "./pages/admin/Hotels";
 import AdminAirlines from "./pages/admin/Airlines";
 import AdminAirports from "./pages/admin/Airports";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="itineraries" element={<AdminItineraries />} />
               <Route path="bookings" element={<AdminBookings />} />
               <Route path="payments" element={<AdminPayments />} />
+              <Route path="reports" element={<AdminReports />} />
               <Route path="pilgrims" element={<AdminPilgrims />} />
               <Route path="branches" element={<AdminBranches />} />
               <Route path="agents" element={<AdminAgents />} />

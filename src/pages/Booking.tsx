@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Users, Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Users, Minus, Plus, Building2, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -42,7 +43,18 @@ interface Pilgrim {
   nik: string;
 }
 
-const STEPS = ["Pilih Kamar", "Data Jemaah", "Konfirmasi"];
+interface Branch {
+  id: string;
+  name: string;
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  branch_id: string | null;
+}
+
+const STEPS = ["Pilih Kamar", "Data Jemaah", "PIC & Konfirmasi"];
 
 const Booking = () => {
   const { slug, departureId } = useParams();
@@ -57,6 +69,13 @@ const Booking = () => {
   const [pilgrims, setPilgrims] = useState<Pilgrim[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  
+  // PIC State
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [picType, setPicType] = useState<string>("pusat");
+  const [picBranchId, setPicBranchId] = useState<string>("");
+  const [picAgentId, setPicAgentId] = useState<string>("");
 
   useEffect(() => {
     if (!user) {
@@ -65,14 +84,18 @@ const Booking = () => {
     }
 
     const fetchData = async () => {
-      const { data: pkgData } = await supabase
-        .from("packages")
-        .select("id, title, slug")
-        .eq("slug", slug)
-        .single();
+      // Fetch package, departure, branches, and agents in parallel
+      const [pkgRes, branchRes, agentRes] = await Promise.all([
+        supabase.from("packages").select("id, title, slug").eq("slug", slug).single(),
+        supabase.from("branches").select("id, name").eq("is_active", true).order("name"),
+        supabase.from("agents").select("id, name, branch_id").eq("is_active", true).order("name")
+      ]);
 
-      if (pkgData) {
-        setPkg(pkgData);
+      setBranches(branchRes.data || []);
+      setAgents(agentRes.data || []);
+
+      if (pkgRes.data) {
+        setPkg(pkgRes.data);
 
         const { data: depData } = await supabase
           .from("package_departures")
@@ -161,6 +184,16 @@ const Booking = () => {
       const { data: codeData } = await supabase.rpc("generate_booking_code");
       const bookingCode = codeData || `UMR-${Date.now()}`;
 
+      // Determine PIC
+      let finalPicId: string | null = null;
+      let finalPicType = picType;
+      
+      if (picType === "cabang" && picBranchId) {
+        finalPicId = picBranchId;
+      } else if (picType === "agen" && picAgentId) {
+        finalPicId = picAgentId;
+      }
+
       // Create booking
       const { data: booking, error: bookingError } = await supabase
         .from("bookings")
@@ -171,6 +204,8 @@ const Booking = () => {
           departure_id: departure.id,
           total_price: getTotalPrice(),
           status: "draft",
+          pic_type: finalPicType,
+          pic_id: finalPicId,
         })
         .select()
         .single();
@@ -375,8 +410,86 @@ const Booking = () => {
 
             {step === 2 && (
               <div className="space-y-6">
-                <h2 className="text-xl font-display font-bold">Konfirmasi Booking</h2>
+                <h2 className="text-xl font-display font-bold">PIC & Konfirmasi Booking</h2>
+                
+                {/* PIC Selection */}
+                <div className="p-4 border border-border rounded-xl space-y-4">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-gold" />
+                    Pilih Penanggung Jawab (PIC)
+                  </h3>
+                  <RadioGroup value={picType} onValueChange={setPicType} className="space-y-3">
+                    <div className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:border-gold/50 cursor-pointer">
+                      <RadioGroupItem value="pusat" id="pusat" />
+                      <Label htmlFor="pusat" className="flex-1 cursor-pointer">
+                        <span className="font-medium">Kantor Pusat</span>
+                        <span className="block text-sm text-muted-foreground">Booking langsung dari kantor pusat</span>
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:border-gold/50 cursor-pointer">
+                      <RadioGroupItem value="cabang" id="cabang" />
+                      <Label htmlFor="cabang" className="flex-1 cursor-pointer">
+                        <span className="font-medium">Cabang</span>
+                        <span className="block text-sm text-muted-foreground">Booking melalui kantor cabang</span>
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:border-gold/50 cursor-pointer">
+                      <RadioGroupItem value="agen" id="agen" />
+                      <Label htmlFor="agen" className="flex-1 cursor-pointer">
+                        <span className="font-medium">Agen</span>
+                        <span className="block text-sm text-muted-foreground">Booking melalui agen travel</span>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                  
+                  {picType === "cabang" && branches.length > 0 && (
+                    <div className="mt-4">
+                      <Label>Pilih Cabang</Label>
+                      <Select value={picBranchId} onValueChange={setPicBranchId}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Pilih cabang" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {branches.map((branch) => (
+                            <SelectItem key={branch.id} value={branch.id}>
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4" />
+                                {branch.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  
+                  {picType === "agen" && agents.length > 0 && (
+                    <div className="mt-4">
+                      <Label>Pilih Agen</Label>
+                      <Select value={picAgentId} onValueChange={setPicAgentId}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Pilih agen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {agents.map((agent) => (
+                            <SelectItem key={agent.id} value={agent.id}>
+                              <div className="flex items-center gap-2">
+                                <UserCheck className="w-4 h-4" />
+                                {agent.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Booking Summary */}
                 <div className="space-y-4">
+                  <h3 className="font-semibold">Ringkasan Booking</h3>
                   <div className="flex justify-between py-2 border-b border-border">
                     <span className="text-muted-foreground">Paket</span>
                     <span className="font-semibold">{pkg.title}</span>
@@ -388,6 +501,14 @@ const Booking = () => {
                   <div className="flex justify-between py-2 border-b border-border">
                     <span className="text-muted-foreground">Jumlah Jemaah</span>
                     <span className="font-semibold">{pilgrims.length} orang</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground">PIC</span>
+                    <span className="font-semibold">
+                      {picType === "pusat" ? "Kantor Pusat" : 
+                       picType === "cabang" ? branches.find(b => b.id === picBranchId)?.name || "Cabang" :
+                       agents.find(a => a.id === picAgentId)?.name || "Agen"}
+                    </span>
                   </div>
                   {rooms.filter((r) => r.quantity > 0).map((r) => (
                     <div key={r.room_type} className="flex justify-between py-2 border-b border-border">

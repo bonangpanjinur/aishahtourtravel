@@ -1,7 +1,63 @@
 import { MapPin, Phone, Mail, Instagram, Facebook, Youtube } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface BrandingSettings {
+  logo_url: string;
+  company_name: string;
+  tagline: string;
+  favicon_url: string;
+}
+
+interface ContactSettings {
+  address: string;
+  phone: string;
+  whatsapp: string;
+  email: string;
+  map_embed_url: string;
+}
+
+const defaultBranding: BrandingSettings = {
+  logo_url: "",
+  company_name: "UmrohPlus",
+  tagline: "Travel & Tours",
+  favicon_url: "",
+};
+
+const defaultContact: ContactSettings = {
+  address: "Jl. Raya Umroh No. 123, Jakarta Selatan 12345",
+  phone: "0812-3456-7890",
+  whatsapp: "6281234567890",
+  email: "info@umrohplus.id",
+  map_embed_url: "",
+};
 
 const Footer = () => {
+  const [branding, setBranding] = useState<BrandingSettings>(defaultBranding);
+  const [contact, setContact] = useState<ContactSettings>(defaultContact);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase
+        .from("site_settings")
+        .select("*")
+        .in("key", ["branding", "contact"]);
+
+      if (data) {
+        data.forEach((setting) => {
+          if (setting.key === "branding" && setting.value && typeof setting.value === 'object') {
+            setBranding({ ...defaultBranding, ...(setting.value as object) });
+          }
+          if (setting.key === "contact" && setting.value && typeof setting.value === 'object') {
+            setContact({ ...defaultContact, ...(setting.value as object) });
+          }
+        });
+      }
+    };
+    fetchSettings();
+  }, []);
+
   return (
     <footer id="kontak" className="bg-primary text-primary-foreground">
       <div className="container-custom section-padding pb-8">
@@ -9,13 +65,23 @@ const Footer = () => {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 rounded-full gradient-gold flex items-center justify-center">
-                <span className="font-display font-bold text-lg text-primary">U</span>
-              </div>
+              {branding.logo_url ? (
+                <img 
+                  src={branding.logo_url} 
+                  alt={branding.company_name} 
+                  className="h-10 w-auto object-contain"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full gradient-gold flex items-center justify-center">
+                  <span className="font-display font-bold text-lg text-primary">
+                    {branding.company_name.charAt(0)}
+                  </span>
+                </div>
+              )}
               <div>
-                <span className="font-display text-xl font-bold">UmrohPlus</span>
+                <span className="font-display text-xl font-bold">{branding.company_name}</span>
                 <span className="block text-[10px] text-gold-light tracking-widest uppercase -mt-1">
-                  Travel & Tours
+                  {branding.tagline}
                 </span>
               </div>
             </div>
@@ -62,23 +128,23 @@ const Footer = () => {
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-gold flex-shrink-0 mt-0.5" />
                 <span className="text-sm text-primary-foreground/60">
-                  Jl. Raya Umroh No. 123, Jakarta Selatan 12345
+                  {contact.address}
                 </span>
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-gold flex-shrink-0" />
-                <span className="text-sm text-primary-foreground/60">0812-3456-7890</span>
+                <span className="text-sm text-primary-foreground/60">{contact.phone}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-gold flex-shrink-0" />
-                <span className="text-sm text-primary-foreground/60">info@umrohplus.id</span>
+                <span className="text-sm text-primary-foreground/60">{contact.email}</span>
               </div>
             </div>
           </div>
         </div>
 
         <div className="mt-12 pt-8 border-t border-emerald-light/20 text-center text-sm text-primary-foreground/40">
-          © 2025 UmrohPlus Travel & Tours. Seluruh hak dilindungi.
+          © 2025 {branding.company_name} {branding.tagline}. Seluruh hak dilindungi.
         </div>
       </div>
     </footer>

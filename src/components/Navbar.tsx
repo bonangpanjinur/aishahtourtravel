@@ -16,9 +16,24 @@ interface NavItem {
   children?: NavItem[];
 }
 
+interface BrandingSettings {
+  logo_url: string;
+  company_name: string;
+  tagline: string;
+  favicon_url: string;
+}
+
+const defaultBranding: BrandingSettings = {
+  logo_url: "",
+  company_name: "UmrohPlus",
+  tagline: "Travel & Tours",
+  favicon_url: "",
+};
+
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [navItems, setNavItems] = useState<NavItem[]>([]);
+  const [branding, setBranding] = useState<BrandingSettings>(defaultBranding);
   const location = useLocation();
   const { user, isAdmin, signOut } = useAuth();
 
@@ -44,7 +59,22 @@ const Navbar = () => {
         setNavItems(hierarchy);
       }
     };
+
+    const fetchBranding = async () => {
+      const { data } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "branding")
+        .eq("category", "general")
+        .single();
+
+      if (data?.value && typeof data.value === 'object') {
+        setBranding({ ...defaultBranding, ...(data.value as object) });
+      }
+    };
+
     fetchNavItems();
+    fetchBranding();
   }, []);
 
   // Fallback to static links if no nav items in DB
@@ -60,15 +90,25 @@ const Navbar = () => {
       <div className="container-custom flex items-center justify-between h-16 md:h-20 px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full gradient-gold flex items-center justify-center">
-            <span className="font-display font-bold text-lg text-primary">U</span>
-          </div>
+          {branding.logo_url ? (
+            <img 
+              src={branding.logo_url} 
+              alt={branding.company_name} 
+              className="h-10 w-auto object-contain"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full gradient-gold flex items-center justify-center">
+              <span className="font-display font-bold text-lg text-primary">
+                {branding.company_name.charAt(0)}
+              </span>
+            </div>
+          )}
           <div>
             <span className="font-display text-xl font-bold text-primary-foreground">
-              UmrohPlus
+              {branding.company_name}
             </span>
             <span className="block text-[10px] text-gold-light tracking-widest uppercase -mt-1">
-              Travel & Tours
+              {branding.tagline}
             </span>
           </div>
         </Link>

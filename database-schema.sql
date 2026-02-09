@@ -1,10 +1,18 @@
 -- ============================================================
 -- AISYAH TOUR & TRAVEL - COMPLETE DATABASE SCHEMA
--- Single-file Supabase Migration (FULL)
+-- Single-file Supabase Migration (FULL + MULTI-ROLE)
 -- Generated: 2026-02-09
 -- ============================================================
 -- CATATAN: File ini berisi SELURUH skema database proyek.
 -- Jalankan di Supabase SQL Editor pada project baru.
+-- ============================================================
+-- ROLE SYSTEM:
+--   super_admin  → Full akses seluruh sistem
+--   admin        → Manajemen operasional (booking, paket, CMS)
+--   staff        → Staff kantor pusat (lihat data, input booking)
+--   cabang       → Kepala cabang (lihat data cabangnya)
+--   agen         → Agen penjualan (lihat booking & komisi sendiri)
+--   jemaah       → Pembeli / jemaah (default saat signup)
 -- ============================================================
 
 -- ============================================================
@@ -13,10 +21,28 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
 
 -- ============================================================
--- 2. HELPER FUNCTIONS (harus dibuat sebelum tabel & policies)
+-- 2. ENUM & TYPES
 -- ============================================================
 
--- Cek apakah user adalah admin
+-- Role enum untuk validasi ketat
+DO $$ BEGIN
+  CREATE TYPE public.app_role AS ENUM (
+    'super_admin',
+    'admin',
+    'staff',
+    'cabang',
+    'agen',
+    'jemaah'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+-- ============================================================
+-- 3. HELPER FUNCTIONS (harus dibuat sebelum tabel & policies)
+-- ============================================================
+
+-- Cek apakah user adalah admin (super_admin atau admin)
 CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -28,7 +54,43 @@ AS $$
   );
 $$;
 
--- Cek apakah user memiliki role tertentu
+-- Cek apakah user adalah staff level (admin, super_admin, staff)
+CREATE OR REPLACE FUNCTION public.is_staff(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = _user_id AND role IN ('super_admin', 'admin', 'staff')
+  );
+$$;
+
+-- Cek apakah user adalah cabang
+CREATE OR REPLACE FUNCTION public.is_cabang(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = _user_id AND role = 'cabang'
+  );
+$$;
+
+-- Cek apakah user adalah agen
+CREATE OR REPLACE FUNCTION public.is_agen(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = _user_id AND role = 'agen'
+  );
+$$;
+
+-- Cek apakah user memiliki role tertentu (generic)
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -38,6 +100,51 @@ AS $$
     SELECT 1 FROM public.user_roles
     WHERE user_id = _user_id AND role = _role
   );
+$$;
+
+-- Cek apakah user punya salah satu dari beberapa role
+CREATE OR REPLACE FUNCTION public.has_any_role(_user_id uuid, _roles text[])
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = _user_id AND role = ANY(_roles)
+  );
+$$;
+
+-- Ambil role user (untuk cek di client)
+CREATE OR REPLACE FUNCTION public.get_user_role(_user_id uuid)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT role FROM public.user_roles
+  WHERE user_id = _user_id
+  LIMIT 1;
+$$;
+
+-- Ambil branch_id milik user cabang
+CREATE OR REPLACE FUNCTION public.get_user_branch_id(_user_id uuid)
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT branch_id FROM public.user_branches
+  WHERE user_id = _user_id
+  LIMIT 1;
+$$;
+
+-- Ambil agent_id milik user agen
+CREATE OR REPLACE FUNCTION public.get_user_agent_id(_user_id uuid)
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT agent_id FROM public.user_agents
+  WHERE user_id = _user_id
+  LIMIT 1;
 $$;
 
 -- Generate kode booking unik
@@ -61,12 +168,16 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
+  -- Buat profile
   INSERT INTO public.profiles (id, name, email)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
     NEW.email
   );
+  -- Assign default role: jemaah
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.id, 'jemaah');
   RETURN NEW;
 END;
 $$;
@@ -135,10 +246,10 @@ END;
 $$;
 
 -- ============================================================
--- 3. SEMUA TABEL (33 tabel)
+-- 4. SEMUA TABEL (37 tabel)
 -- ============================================================
 
--- 3.1 Profiles (data user tambahan)
+-- 4.1 Profiles (data user tambahan)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY,
   name text NOT NULL,
@@ -148,15 +259,32 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.2 User Roles (role-based access control)
+-- 4.2 User Roles (role-based access control)
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   role text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  UNIQUE(user_id, role)
+);
+
+-- 4.3 User Branches (mapping user cabang ke branch)
+CREATE TABLE IF NOT EXISTS public.user_branches (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  branch_id uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.3 Branches (cabang)
+-- 4.4 User Agents (mapping user agen ke agent record)
+CREATE TABLE IF NOT EXISTS public.user_agents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  agent_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+-- 4.5 Branches (cabang)
 CREATE TABLE IF NOT EXISTS public.branches (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -166,7 +294,7 @@ CREATE TABLE IF NOT EXISTS public.branches (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.4 Agents (agen penjualan)
+-- 4.6 Agents (agen penjualan)
 CREATE TABLE IF NOT EXISTS public.agents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -177,7 +305,14 @@ CREATE TABLE IF NOT EXISTS public.agents (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.5 Airlines (maskapai)
+-- Add foreign keys for user_branches & user_agents after branches & agents exist
+ALTER TABLE public.user_branches
+  ADD CONSTRAINT user_branches_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES public.branches(id) ON DELETE CASCADE;
+
+ALTER TABLE public.user_agents
+  ADD CONSTRAINT user_agents_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
+
+-- 4.7 Airlines (maskapai)
 CREATE TABLE IF NOT EXISTS public.airlines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -185,7 +320,7 @@ CREATE TABLE IF NOT EXISTS public.airlines (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.6 Airports (bandara)
+-- 4.8 Airports (bandara)
 CREATE TABLE IF NOT EXISTS public.airports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -194,7 +329,7 @@ CREATE TABLE IF NOT EXISTS public.airports (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.7 Hotels
+-- 4.9 Hotels
 CREATE TABLE IF NOT EXISTS public.hotels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -203,7 +338,7 @@ CREATE TABLE IF NOT EXISTS public.hotels (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.8 Muthawifs (pembimbing ibadah)
+-- 4.10 Muthawifs (pembimbing ibadah)
 CREATE TABLE IF NOT EXISTS public.muthawifs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -212,7 +347,7 @@ CREATE TABLE IF NOT EXISTS public.muthawifs (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.9 Package Categories (kategori paket)
+-- 4.11 Package Categories (kategori paket)
 CREATE TABLE IF NOT EXISTS public.package_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -223,7 +358,7 @@ CREATE TABLE IF NOT EXISTS public.package_categories (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.10 Packages (paket umroh/haji)
+-- 4.12 Packages (paket umroh/haji)
 CREATE TABLE IF NOT EXISTS public.packages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -244,7 +379,7 @@ CREATE TABLE IF NOT EXISTS public.packages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.11 Package Commissions (komisi per paket)
+-- 4.13 Package Commissions (komisi per paket per tipe PIC)
 CREATE TABLE IF NOT EXISTS public.package_commissions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   package_id uuid NOT NULL REFERENCES public.packages(id),
@@ -253,7 +388,7 @@ CREATE TABLE IF NOT EXISTS public.package_commissions (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.12 Package Departures (jadwal keberangkatan)
+-- 4.14 Package Departures (jadwal keberangkatan)
 CREATE TABLE IF NOT EXISTS public.package_departures (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   package_id uuid REFERENCES public.packages(id),
@@ -266,7 +401,7 @@ CREATE TABLE IF NOT EXISTS public.package_departures (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.13 Departure Prices (harga per tipe kamar per keberangkatan)
+-- 4.15 Departure Prices (harga per tipe kamar per keberangkatan)
 CREATE TABLE IF NOT EXISTS public.departure_prices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   departure_id uuid REFERENCES public.package_departures(id),
@@ -275,7 +410,7 @@ CREATE TABLE IF NOT EXISTS public.departure_prices (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.14 Itineraries (jadwal perjalanan)
+-- 4.16 Itineraries (jadwal perjalanan)
 CREATE TABLE IF NOT EXISTS public.itineraries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   departure_id uuid REFERENCES public.package_departures(id),
@@ -285,7 +420,7 @@ CREATE TABLE IF NOT EXISTS public.itineraries (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.15 Itinerary Days (detail per hari)
+-- 4.17 Itinerary Days (detail per hari)
 CREATE TABLE IF NOT EXISTS public.itinerary_days (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   itinerary_id uuid REFERENCES public.itineraries(id),
@@ -296,7 +431,7 @@ CREATE TABLE IF NOT EXISTS public.itinerary_days (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.16 Bookings (pemesanan)
+-- 4.18 Bookings (pemesanan)
 CREATE TABLE IF NOT EXISTS public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_code text NOT NULL UNIQUE,
@@ -308,10 +443,12 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   notes text,
   pic_id uuid,
   pic_type text DEFAULT 'pusat',
+  branch_id uuid REFERENCES public.branches(id),
+  agent_id uuid REFERENCES public.agents(id),
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.17 Booking Rooms (kamar dalam booking)
+-- 4.19 Booking Rooms (kamar dalam booking)
 CREATE TABLE IF NOT EXISTS public.booking_rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -322,7 +459,7 @@ CREATE TABLE IF NOT EXISTS public.booking_rooms (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.18 Booking Pilgrims (data jemaah per booking)
+-- 4.20 Booking Pilgrims (data jemaah per booking)
 CREATE TABLE IF NOT EXISTS public.booking_pilgrims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -337,7 +474,7 @@ CREATE TABLE IF NOT EXISTS public.booking_pilgrims (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.19 Payments (pembayaran)
+-- 4.21 Payments (pembayaran)
 CREATE TABLE IF NOT EXISTS public.payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid REFERENCES public.bookings(id),
@@ -353,7 +490,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.20 Notifications (notifikasi)
+-- 4.22 Notifications (notifikasi)
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -365,7 +502,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.21 Coupons (kupon diskon)
+-- 4.23 Coupons (kupon diskon)
 CREATE TABLE IF NOT EXISTS public.coupons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
@@ -379,7 +516,7 @@ CREATE TABLE IF NOT EXISTS public.coupons (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.22 Blog Posts
+-- 4.24 Blog Posts
 CREATE TABLE IF NOT EXISTS public.blog_posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -397,7 +534,7 @@ CREATE TABLE IF NOT EXISTS public.blog_posts (
   updated_at timestamp with time zone DEFAULT now()
 );
 
--- 3.23 FAQs
+-- 4.25 FAQs
 CREATE TABLE IF NOT EXISTS public.faqs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   question text NOT NULL,
@@ -407,7 +544,7 @@ CREATE TABLE IF NOT EXISTS public.faqs (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.24 Gallery
+-- 4.26 Gallery
 CREATE TABLE IF NOT EXISTS public.gallery (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   image_url text NOT NULL,
@@ -419,7 +556,7 @@ CREATE TABLE IF NOT EXISTS public.gallery (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.25 Testimonials
+-- 4.27 Testimonials
 CREATE TABLE IF NOT EXISTS public.testimonials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -434,7 +571,7 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.26 Services (layanan yang ditampilkan di homepage)
+-- 4.28 Services (layanan di homepage)
 CREATE TABLE IF NOT EXISTS public.services (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -445,7 +582,7 @@ CREATE TABLE IF NOT EXISTS public.services (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.27 Advantages (keunggulan yang ditampilkan di homepage)
+-- 4.29 Advantages (keunggulan di homepage)
 CREATE TABLE IF NOT EXISTS public.advantages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -455,7 +592,7 @@ CREATE TABLE IF NOT EXISTS public.advantages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.28 Guide Steps (langkah panduan booking)
+-- 4.30 Guide Steps (langkah panduan booking)
 CREATE TABLE IF NOT EXISTS public.guide_steps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   step_number integer NOT NULL,
@@ -466,7 +603,7 @@ CREATE TABLE IF NOT EXISTS public.guide_steps (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.29 Navigation Items (menu navigasi dinamis)
+-- 4.31 Navigation Items (menu navigasi dinamis)
 CREATE TABLE IF NOT EXISTS public.navigation_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   label text NOT NULL,
@@ -478,7 +615,7 @@ CREATE TABLE IF NOT EXISTS public.navigation_items (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.30 Floating Buttons (tombol floating WA, dll)
+-- 4.32 Floating Buttons (tombol floating WA, dll)
 CREATE TABLE IF NOT EXISTS public.floating_buttons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   label text NOT NULL,
@@ -490,7 +627,7 @@ CREATE TABLE IF NOT EXISTS public.floating_buttons (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.31 Pages (halaman CMS)
+-- 4.33 Pages (halaman CMS)
 CREATE TABLE IF NOT EXISTS public.pages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text,
@@ -502,7 +639,7 @@ CREATE TABLE IF NOT EXISTS public.pages (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.32 Sections (page builder sections)
+-- 4.34 Sections (page builder sections)
 CREATE TABLE IF NOT EXISTS public.sections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   page_slug text,
@@ -513,7 +650,7 @@ CREATE TABLE IF NOT EXISTS public.sections (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.33 Settings (key-value settings)
+-- 4.35 Settings (key-value settings)
 CREATE TABLE IF NOT EXISTS public.settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   key text NOT NULL UNIQUE,
@@ -521,7 +658,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
   created_at timestamp with time zone DEFAULT now()
 );
 
--- 3.34 Site Settings (JSON settings dengan kategori)
+-- 4.36 Site Settings (JSON settings dengan kategori)
 CREATE TABLE IF NOT EXISTS public.site_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   key text NOT NULL,
@@ -532,12 +669,26 @@ CREATE TABLE IF NOT EXISTS public.site_settings (
   UNIQUE(key, category)
 );
 
+-- 4.37 Activity Logs (audit trail)
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid,
+  action text NOT NULL,
+  entity_type text,
+  entity_id uuid,
+  details jsonb,
+  ip_address text,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 -- ============================================================
--- 4. ENABLE ROW LEVEL SECURITY (semua tabel)
+-- 5. ENABLE ROW LEVEL SECURITY (semua tabel)
 -- ============================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.airlines ENABLE ROW LEVEL SECURITY;
@@ -570,9 +721,17 @@ ALTER TABLE public.pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- 5. RLS POLICIES (seluruh tabel)
+-- 6. RLS POLICIES
+-- ============================================================
+-- Keterangan akses per role:
+--   super_admin/admin → Full CRUD semua data
+--   staff             → Read semua data operasional, create/update booking
+--   cabang            → Read/manage data booking di cabangnya
+--   agen              → Read booking milik sendiri & komisi
+--   jemaah            → Read/create booking & payment milik sendiri
 -- ============================================================
 
 -- ==================== PROFILES ====================
@@ -584,6 +743,10 @@ DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
 CREATE POLICY "Admins can view all profiles" ON public.profiles
   FOR SELECT USING (is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff can view all profiles" ON public.profiles;
+CREATE POLICY "Staff can view all profiles" ON public.profiles
+  FOR SELECT USING (is_staff(auth.uid()));
+
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
@@ -591,6 +754,10 @@ CREATE POLICY "Users can insert own profile" ON public.profiles
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can update all profiles" ON public.profiles;
+CREATE POLICY "Admins can update all profiles" ON public.profiles
+  FOR UPDATE USING (is_admin(auth.uid()));
 
 -- ==================== USER ROLES ====================
 DROP POLICY IF EXISTS "Users can view own roles" ON public.user_roles;
@@ -601,10 +768,34 @@ DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
   FOR ALL USING (is_admin(auth.uid()));
 
+-- ==================== USER BRANCHES ====================
+DROP POLICY IF EXISTS "Users can view own branch mapping" ON public.user_branches;
+CREATE POLICY "Users can view own branch mapping" ON public.user_branches
+  FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can manage user branches" ON public.user_branches;
+CREATE POLICY "Admins can manage user branches" ON public.user_branches
+  FOR ALL USING (is_admin(auth.uid()));
+
+-- ==================== USER AGENTS ====================
+DROP POLICY IF EXISTS "Users can view own agent mapping" ON public.user_agents;
+CREATE POLICY "Users can view own agent mapping" ON public.user_agents
+  FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can manage user agents" ON public.user_agents;
+CREATE POLICY "Admins can manage user agents" ON public.user_agents
+  FOR ALL USING (is_admin(auth.uid()));
+
 -- ==================== BRANCHES ====================
 DROP POLICY IF EXISTS "Public can read branches" ON public.branches;
 CREATE POLICY "Public can read branches" ON public.branches
   FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Cabang can view own branch" ON public.branches;
+CREATE POLICY "Cabang can view own branch" ON public.branches
+  FOR SELECT USING (
+    id = get_user_branch_id(auth.uid())
+  );
 
 DROP POLICY IF EXISTS "Admins can manage branches" ON public.branches;
 CREATE POLICY "Admins can manage branches" ON public.branches
@@ -614,6 +805,18 @@ CREATE POLICY "Admins can manage branches" ON public.branches
 DROP POLICY IF EXISTS "Public can read agents" ON public.agents;
 CREATE POLICY "Public can read agents" ON public.agents
   FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Cabang can view agents in own branch" ON public.agents;
+CREATE POLICY "Cabang can view agents in own branch" ON public.agents
+  FOR SELECT USING (
+    branch_id = get_user_branch_id(auth.uid())
+  );
+
+DROP POLICY IF EXISTS "Agen can view own agent record" ON public.agents;
+CREATE POLICY "Agen can view own agent record" ON public.agents
+  FOR SELECT USING (
+    id = get_user_agent_id(auth.uid())
+  );
 
 DROP POLICY IF EXISTS "Admins can manage agents" ON public.agents;
 CREATE POLICY "Admins can manage agents" ON public.agents
@@ -669,14 +872,26 @@ DROP POLICY IF EXISTS "Public can read packages" ON public.packages;
 CREATE POLICY "Public can read packages" ON public.packages
   FOR SELECT USING (is_active = true);
 
+DROP POLICY IF EXISTS "Staff can read all packages" ON public.packages;
+CREATE POLICY "Staff can read all packages" ON public.packages
+  FOR SELECT USING (is_staff(auth.uid()));
+
 DROP POLICY IF EXISTS "Admins can manage packages" ON public.packages;
 CREATE POLICY "Admins can manage packages" ON public.packages
   FOR ALL USING (is_admin(auth.uid()));
 
 -- ==================== PACKAGE COMMISSIONS ====================
-DROP POLICY IF EXISTS "Public can read package commissions" ON public.package_commissions;
-CREATE POLICY "Public can read package commissions" ON public.package_commissions
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Staff can read package commissions" ON public.package_commissions;
+CREATE POLICY "Staff can read package commissions" ON public.package_commissions
+  FOR SELECT USING (is_staff(auth.uid()));
+
+DROP POLICY IF EXISTS "Cabang can read package commissions" ON public.package_commissions;
+CREATE POLICY "Cabang can read package commissions" ON public.package_commissions
+  FOR SELECT USING (is_cabang(auth.uid()));
+
+DROP POLICY IF EXISTS "Agen can read package commissions" ON public.package_commissions;
+CREATE POLICY "Agen can read package commissions" ON public.package_commissions
+  FOR SELECT USING (is_agen(auth.uid()));
 
 DROP POLICY IF EXISTS "Admins can manage package commissions" ON public.package_commissions;
 CREATE POLICY "Admins can manage package commissions" ON public.package_commissions
@@ -686,6 +901,10 @@ CREATE POLICY "Admins can manage package commissions" ON public.package_commissi
 DROP POLICY IF EXISTS "Public can read departures" ON public.package_departures;
 CREATE POLICY "Public can read departures" ON public.package_departures
   FOR SELECT USING (status = 'active');
+
+DROP POLICY IF EXISTS "Staff can read all departures" ON public.package_departures;
+CREATE POLICY "Staff can read all departures" ON public.package_departures
+  FOR SELECT USING (is_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Admins can manage departures" ON public.package_departures;
 CREATE POLICY "Admins can manage departures" ON public.package_departures
@@ -719,6 +938,7 @@ CREATE POLICY "Admins can manage itinerary days" ON public.itinerary_days
   FOR ALL USING (is_admin(auth.uid()));
 
 -- ==================== BOOKINGS ====================
+-- Jemaah: lihat & buat booking sendiri
 DROP POLICY IF EXISTS "Users can view own bookings" ON public.bookings;
 CREATE POLICY "Users can view own bookings" ON public.bookings
   FOR SELECT USING (auth.uid() = user_id);
@@ -727,10 +947,50 @@ DROP POLICY IF EXISTS "Users can create bookings" ON public.bookings;
 CREATE POLICY "Users can create bookings" ON public.bookings
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can update own bookings" ON public.bookings;
-CREATE POLICY "Users can update own bookings" ON public.bookings
+DROP POLICY IF EXISTS "Users can update own draft bookings" ON public.bookings;
+CREATE POLICY "Users can update own draft bookings" ON public.bookings
   FOR UPDATE USING (auth.uid() = user_id AND status = 'draft');
 
+-- Staff: lihat semua booking
+DROP POLICY IF EXISTS "Staff can view all bookings" ON public.bookings;
+CREATE POLICY "Staff can view all bookings" ON public.bookings
+  FOR SELECT USING (is_staff(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can create bookings" ON public.bookings;
+CREATE POLICY "Staff can create bookings" ON public.bookings
+  FOR INSERT WITH CHECK (is_staff(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can update bookings" ON public.bookings;
+CREATE POLICY "Staff can update bookings" ON public.bookings
+  FOR UPDATE USING (is_staff(auth.uid()));
+
+-- Cabang: lihat booking di cabangnya
+DROP POLICY IF EXISTS "Cabang can view branch bookings" ON public.bookings;
+CREATE POLICY "Cabang can view branch bookings" ON public.bookings
+  FOR SELECT USING (
+    branch_id = get_user_branch_id(auth.uid())
+  );
+
+DROP POLICY IF EXISTS "Cabang can create branch bookings" ON public.bookings;
+CREATE POLICY "Cabang can create branch bookings" ON public.bookings
+  FOR INSERT WITH CHECK (
+    branch_id = get_user_branch_id(auth.uid())
+  );
+
+DROP POLICY IF EXISTS "Cabang can update branch bookings" ON public.bookings;
+CREATE POLICY "Cabang can update branch bookings" ON public.bookings
+  FOR UPDATE USING (
+    branch_id = get_user_branch_id(auth.uid())
+  );
+
+-- Agen: lihat booking yang dia tangani
+DROP POLICY IF EXISTS "Agen can view own agent bookings" ON public.bookings;
+CREATE POLICY "Agen can view own agent bookings" ON public.bookings
+  FOR SELECT USING (
+    agent_id = get_user_agent_id(auth.uid())
+  );
+
+-- Admin: full akses
 DROP POLICY IF EXISTS "Admins can manage all bookings" ON public.bookings;
 CREATE POLICY "Admins can manage all bookings" ON public.bookings
   FOR ALL USING (is_admin(auth.uid()));
@@ -747,6 +1007,10 @@ CREATE POLICY "Users can create booking rooms" ON public.booking_rooms
   FOR INSERT WITH CHECK (EXISTS (
     SELECT 1 FROM bookings WHERE bookings.id = booking_rooms.booking_id AND bookings.user_id = auth.uid()
   ));
+
+DROP POLICY IF EXISTS "Staff can manage booking rooms" ON public.booking_rooms;
+CREATE POLICY "Staff can manage booking rooms" ON public.booking_rooms
+  FOR ALL USING (is_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Admins can manage booking rooms" ON public.booking_rooms;
 CREATE POLICY "Admins can manage booking rooms" ON public.booking_rooms
@@ -765,6 +1029,10 @@ CREATE POLICY "Users can create pilgrims" ON public.booking_pilgrims
     SELECT 1 FROM bookings WHERE bookings.id = booking_pilgrims.booking_id AND bookings.user_id = auth.uid()
   ));
 
+DROP POLICY IF EXISTS "Staff can manage pilgrims" ON public.booking_pilgrims;
+CREATE POLICY "Staff can manage pilgrims" ON public.booking_pilgrims
+  FOR ALL USING (is_staff(auth.uid()));
+
 DROP POLICY IF EXISTS "Admins can manage pilgrims" ON public.booking_pilgrims;
 CREATE POLICY "Admins can manage pilgrims" ON public.booking_pilgrims
   FOR ALL USING (is_admin(auth.uid()));
@@ -780,6 +1048,18 @@ DROP POLICY IF EXISTS "Users can create payments" ON public.payments;
 CREATE POLICY "Users can create payments" ON public.payments
   FOR INSERT WITH CHECK (EXISTS (
     SELECT 1 FROM bookings WHERE bookings.id = payments.booking_id AND bookings.user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Staff can view all payments" ON public.payments;
+CREATE POLICY "Staff can view all payments" ON public.payments
+  FOR SELECT USING (is_staff(auth.uid()));
+
+DROP POLICY IF EXISTS "Cabang can view branch payments" ON public.payments;
+CREATE POLICY "Cabang can view branch payments" ON public.payments
+  FOR SELECT USING (EXISTS (
+    SELECT 1 FROM bookings
+    WHERE bookings.id = payments.booking_id
+    AND bookings.branch_id = get_user_branch_id(auth.uid())
   ));
 
 DROP POLICY IF EXISTS "Admins can manage payments" ON public.payments;
@@ -808,6 +1088,10 @@ DROP POLICY IF EXISTS "Public can read active coupons" ON public.coupons;
 CREATE POLICY "Public can read active coupons" ON public.coupons
   FOR SELECT USING (is_active = true);
 
+DROP POLICY IF EXISTS "Staff can read all coupons" ON public.coupons;
+CREATE POLICY "Staff can read all coupons" ON public.coupons
+  FOR SELECT USING (is_staff(auth.uid()));
+
 DROP POLICY IF EXISTS "Admins can manage coupons" ON public.coupons;
 CREATE POLICY "Admins can manage coupons" ON public.coupons
   FOR ALL USING (is_admin(auth.uid()));
@@ -816,6 +1100,10 @@ CREATE POLICY "Admins can manage coupons" ON public.coupons
 DROP POLICY IF EXISTS "Public can read published blog posts" ON public.blog_posts;
 CREATE POLICY "Public can read published blog posts" ON public.blog_posts
   FOR SELECT USING (is_published = true);
+
+DROP POLICY IF EXISTS "Staff can read all blog posts" ON public.blog_posts;
+CREATE POLICY "Staff can read all blog posts" ON public.blog_posts
+  FOR SELECT USING (is_staff(auth.uid()));
 
 DROP POLICY IF EXISTS "Admins can manage blog posts" ON public.blog_posts;
 CREATE POLICY "Admins can manage blog posts" ON public.blog_posts
@@ -929,11 +1217,24 @@ DROP POLICY IF EXISTS "Admins can manage site settings" ON public.site_settings;
 CREATE POLICY "Admins can manage site settings" ON public.site_settings
   FOR ALL USING (is_admin(auth.uid()));
 
+-- ==================== ACTIVITY LOGS ====================
+DROP POLICY IF EXISTS "Admins can view activity logs" ON public.activity_logs;
+CREATE POLICY "Admins can view activity logs" ON public.activity_logs
+  FOR SELECT USING (is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can view activity logs" ON public.activity_logs;
+CREATE POLICY "Staff can view activity logs" ON public.activity_logs
+  FOR SELECT USING (is_staff(auth.uid()));
+
+DROP POLICY IF EXISTS "System can insert activity logs" ON public.activity_logs;
+CREATE POLICY "System can insert activity logs" ON public.activity_logs
+  FOR INSERT WITH CHECK (true);
+
 -- ============================================================
--- 6. TRIGGERS
+-- 7. TRIGGERS
 -- ============================================================
 
--- Auto-create profile saat user signup via auth
+-- Auto-create profile + default role saat user signup via auth
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -962,7 +1263,7 @@ CREATE TRIGGER on_booking_status_change
   EXECUTE FUNCTION public.update_departure_quota_on_booking_paid();
 
 -- ============================================================
--- 7. STORAGE BUCKETS & POLICIES
+-- 8. STORAGE BUCKETS & POLICIES
 -- ============================================================
 
 -- Buat bucket
@@ -988,14 +1289,14 @@ DROP POLICY IF EXISTS "Auth users can upload avatars" ON storage.objects;
 CREATE POLICY "Auth users can upload avatars" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
 
--- Storage policies: admin upload CMS content
+-- Storage policies: admin & staff upload CMS content
 DROP POLICY IF EXISTS "Admins can upload cms images" ON storage.objects;
 CREATE POLICY "Admins can upload cms images" ON storage.objects
   FOR INSERT WITH CHECK (
     bucket_id IN ('cms-images', 'gallery', 'testimonials', 'blog')
     AND EXISTS (
       SELECT 1 FROM public.user_roles
-      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin', 'staff')
     )
   );
 
@@ -1023,12 +1324,37 @@ CREATE POLICY "Admins can update cms objects" ON storage.objects
     bucket_id IN ('cms-images', 'gallery', 'testimonials', 'blog')
     AND EXISTS (
       SELECT 1 FROM public.user_roles
-      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+      WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin', 'staff')
     )
   );
 
 -- ============================================================
--- 8. REALTIME (opsional, aktifkan jika diperlukan)
+-- 9. INDEXES (performa)
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON public.user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON public.user_roles(role);
+CREATE INDEX IF NOT EXISTS idx_user_branches_user_id ON public.user_branches(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_branches_branch_id ON public.user_branches(branch_id);
+CREATE INDEX IF NOT EXISTS idx_user_agents_user_id ON public.user_agents(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_agents_agent_id ON public.user_agents(agent_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON public.bookings(user_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_branch_id ON public.bookings(branch_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_agent_id ON public.bookings(agent_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON public.bookings(status);
+CREATE INDEX IF NOT EXISTS idx_bookings_departure_id ON public.bookings(departure_id);
+CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON public.payments(booking_id);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON public.payments(status);
+CREATE INDEX IF NOT EXISTS idx_booking_pilgrims_booking_id ON public.booking_pilgrims(booking_id);
+CREATE INDEX IF NOT EXISTS idx_booking_rooms_booking_id ON public.booking_rooms(booking_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON public.activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON public.activity_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_packages_slug ON public.packages(slug);
+CREATE INDEX IF NOT EXISTS idx_blog_posts_slug ON public.blog_posts(slug);
+CREATE INDEX IF NOT EXISTS idx_pages_slug ON public.pages(slug);
+
+-- ============================================================
+-- 10. REALTIME (opsional, aktifkan jika diperlukan)
 -- ============================================================
 
 -- Aktifkan realtime untuk notifikasi dan booking
@@ -1037,11 +1363,25 @@ CREATE POLICY "Admins can update cms objects" ON storage.objects
 -- ALTER PUBLICATION supabase_realtime ADD TABLE public.payments;
 
 -- ============================================================
--- SELESAI! File ini berisi:
--- • 6 functions
--- • 34 tabel
--- • 34 tabel dengan RLS aktif
--- • 70+ RLS policies
+-- RINGKASAN FILE INI:
+-- ============================================================
+-- • 1 enum type (app_role: super_admin, admin, staff, cabang, agen, jemaah)
+-- • 12 functions (is_admin, is_staff, is_cabang, is_agen, has_role, 
+--     has_any_role, get_user_role, get_user_branch_id, get_user_agent_id,
+--     generate_booking_code, handle_new_user, update_updated_at,
+--     update_departure_quota_on_booking_paid)
+-- • 37 tabel (termasuk user_branches, user_agents, activity_logs)
+-- • 37 tabel dengan RLS aktif
+-- • 100+ RLS policies (multi-role aware)
 -- • 4 triggers
--- • 6 storage buckets + 6 storage policies
+-- • 6 storage buckets + 7 storage policies
+-- • 21 indexes untuk performa
+-- ============================================================
+-- HIERARKI ROLE:
+--   super_admin → Akses penuh, kelola role user lain
+--   admin       → Akses penuh operasional
+--   staff       → Read semua data, create/update booking & jemaah
+--   cabang      → Kelola data di cabangnya sendiri
+--   agen        → Lihat booking & komisi milik sendiri
+--   jemaah      → Default role, buat & lihat booking sendiri
 -- ============================================================

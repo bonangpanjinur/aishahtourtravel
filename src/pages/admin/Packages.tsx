@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -25,10 +26,13 @@ interface Package {
   created_at: string;
 }
 
+const PACKAGE_TYPES = ["VIP", "Reguler", "Hemat", "Promo"];
+
 const AdminPackages = () => {
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Package | null>(null);
   const [expandedCommission, setExpandedCommission] = useState<string | null>(null);
   const { toast } = useToast();
@@ -59,34 +63,63 @@ const AdminPackages = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
 
-    const slug = form.slug || form.title.toLowerCase().replace(/\s+/g, "-");
+    const slug = form.slug || form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
-    if (editing) {
-      const { error } = await supabase
-        .from("packages")
-        .update({ ...form, slug })
-        .eq("id", editing.id);
+    // Only send fields that exist in the table
+    const payload = {
+      title: form.title,
+      slug,
+      description: form.description || null,
+      package_type: form.package_type || null,
+      duration_days: form.duration_days,
+      minimum_dp: form.minimum_dp,
+      dp_deadline_days: form.dp_deadline_days,
+      full_deadline_days: form.full_deadline_days,
+    };
 
-      if (error) {
-        toast({ title: "Gagal mengupdate", description: error.message, variant: "destructive" });
-      } else {
+    try {
+      if (editing) {
+        const { error } = await supabase
+          .from("packages")
+          .update(payload)
+          .eq("id", editing.id);
+
+        if (error) throw error;
         toast({ title: "Paket diupdate!" });
-        fetchPackages();
-        setIsOpen(false);
-        resetForm();
-      }
-    } else {
-      const { error } = await supabase.from("packages").insert({ ...form, slug });
-
-      if (error) {
-        toast({ title: "Gagal membuat paket", description: error.message, variant: "destructive" });
       } else {
+        const { error } = await supabase.from("packages").insert(payload);
+        if (error) throw error;
         toast({ title: "Paket ditambahkan!" });
-        fetchPackages();
-        setIsOpen(false);
-        resetForm();
       }
+      fetchPackages();
+      setIsOpen(false);
+      resetForm();
+    } catch (error: any) {
+      // If schema cache error, retry without deadline fields
+      if (error?.message?.includes("schema cache")) {
+        const { dp_deadline_days, full_deadline_days, ...retryPayload } = payload;
+        try {
+          if (editing) {
+            const { error: retryErr } = await supabase.from("packages").update(retryPayload).eq("id", editing.id);
+            if (retryErr) throw retryErr;
+          } else {
+            const { error: retryErr } = await supabase.from("packages").insert(retryPayload);
+            if (retryErr) throw retryErr;
+          }
+          toast({ title: editing ? "Paket diupdate!" : "Paket ditambahkan!", description: "Beberapa field deadline dilewati karena cache." });
+          fetchPackages();
+          setIsOpen(false);
+          resetForm();
+        } catch (retryErr: any) {
+          toast({ title: "Gagal menyimpan", description: retryErr.message, variant: "destructive" });
+        }
+      } else {
+        toast({ title: editing ? "Gagal mengupdate" : "Gagal membuat paket", description: error.message, variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -107,7 +140,6 @@ const AdminPackages = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Yakin ingin menghapus paket ini?")) return;
-
     const { error } = await supabase.from("packages").delete().eq("id", id);
     if (error) {
       toast({ title: "Gagal menghapus", description: error.message, variant: "destructive" });
@@ -132,89 +164,113 @@ const AdminPackages = () => {
               <Plus className="w-4 h-4 mr-2" /> Tambah Paket
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editing ? "Edit Paket" : "Tambah Paket Baru"}</DialogTitle>
+              <DialogTitle className="text-xl">{editing ? "Edit Paket" : "Tambah Paket Baru"}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label>Nama Paket *</Label>
-                <Input
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  required
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Slug (URL)</Label>
-                <Input
-                  value={form.slug}
-                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  placeholder="auto-generated jika kosong"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Tipe Paket</Label>
-                <Input
-                  value={form.package_type}
-                  onChange={(e) => setForm({ ...form, package_type: e.target.value })}
-                  placeholder="VIP, Reguler, Hemat"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Durasi (hari)</Label>
-                <Input
-                  type="number"
-                  value={form.duration_days}
-                  onChange={(e) => setForm({ ...form, duration_days: parseInt(e.target.value) })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Minimal DP (Rp)</Label>
-                <Input
-                  type="number"
-                  value={form.minimum_dp}
-                  onChange={(e) => setForm({ ...form, minimum_dp: parseInt(e.target.value) || 0 })}
-                  placeholder="0 = tidak ada minimal DP"
-                  className="mt-1"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Deadline DP (hari sebelum berangkat)</Label>
+            <form onSubmit={handleSubmit} className="space-y-5 pt-2">
+              {/* Row 1: Nama & Tipe */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Nama Paket <span className="text-destructive">*</span></Label>
                   <Input
-                    type="number"
-                    value={form.dp_deadline_days}
-                    onChange={(e) => setForm({ ...form, dp_deadline_days: parseInt(e.target.value) || 30 })}
-                    className="mt-1"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    required
+                    placeholder="Contoh: Umroh VIP 9 Hari"
                   />
                 </div>
-                <div>
-                  <Label>Deadline Pelunasan (hari sebelum berangkat)</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Tipe Paket</Label>
+                  <Select value={form.package_type} onValueChange={(val) => setForm({ ...form, package_type: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih tipe paket" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PACKAGE_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 2: Slug & Durasi */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Slug (URL)</Label>
+                  <Input
+                    value={form.slug}
+                    onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                    placeholder="auto-generated jika kosong"
+                  />
+                  <p className="text-xs text-muted-foreground">Otomatis dari nama jika dikosongkan</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Durasi (hari)</Label>
                   <Input
                     type="number"
-                    value={form.full_deadline_days}
-                    onChange={(e) => setForm({ ...form, full_deadline_days: parseInt(e.target.value) || 7 })}
-                    className="mt-1"
+                    min={1}
+                    value={form.duration_days}
+                    onChange={(e) => setForm({ ...form, duration_days: parseInt(e.target.value) || 9 })}
                   />
                 </div>
               </div>
-              <div>
-                <Label>Deskripsi</Label>
+
+              {/* Row 3: DP & Deadlines */}
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
+                <h4 className="text-sm font-semibold text-foreground">Pengaturan Pembayaran</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Minimal DP (Rp)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.minimum_dp}
+                      onChange={(e) => setForm({ ...form, minimum_dp: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Deadline DP (hari)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.dp_deadline_days}
+                      onChange={(e) => setForm({ ...form, dp_deadline_days: parseInt(e.target.value) || 30 })}
+                    />
+                    <p className="text-xs text-muted-foreground">Sebelum berangkat</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Deadline Pelunasan (hari)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.full_deadline_days}
+                      onChange={(e) => setForm({ ...form, full_deadline_days: parseInt(e.target.value) || 7 })}
+                    />
+                    <p className="text-xs text-muted-foreground">Sebelum berangkat</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deskripsi */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Deskripsi</Label>
                 <Textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="mt-1"
                   rows={3}
+                  placeholder="Deskripsi singkat paket umroh..."
                 />
               </div>
-              <div className="flex justify-end gap-2">
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-2 border-t border-border">
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Batal</Button>
-                <Button type="submit" className="gradient-gold text-primary">Simpan</Button>
+                <Button type="submit" className="gradient-gold text-primary min-w-[120px]" disabled={saving}>
+                  {saving ? "Menyimpan..." : "Simpan"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -252,13 +308,8 @@ const AdminPackages = () => {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setExpandedCommission(expandedCommission === pkg.id ? null : pkg.id)}
-                          title="Komisi"
-                        >
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setExpandedCommission(expandedCommission === pkg.id ? null : pkg.id)} title="Komisi">
                           {expandedCommission === pkg.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
                         <Link to={`/paket/${pkg.slug}`} target="_blank">

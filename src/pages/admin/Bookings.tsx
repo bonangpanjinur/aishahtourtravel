@@ -26,8 +26,7 @@ const AdminBookings = () => {
         .select(`
           id, booking_code, total_price, status, created_at, package_id, pic_type, pic_id, user_id,
           package:packages(title),
-          departure:package_departures(departure_date),
-          profile:profiles!bookings_user_id_profiles_fkey(name, email)
+          departure:package_departures(departure_date)
         `)
         .order("created_at", { ascending: false });
 
@@ -37,7 +36,25 @@ const AdminBookings = () => {
 
       const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
-      setBookings((data as unknown as Booking[]) || []);
+
+      // Fetch profiles separately to avoid ambiguous relationship error
+      const userIds = [...new Set((data || []).map((b: any) => b.user_id).filter(Boolean))];
+      let profilesMap: Record<string, { name: string; email: string }> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, name, email")
+          .in("id", userIds);
+        if (profiles) {
+          profiles.forEach((p: any) => { profilesMap[p.id] = { name: p.name, email: p.email }; });
+        }
+      }
+
+      const enriched = (data || []).map((b: any) => ({
+        ...b,
+        profile: b.user_id ? profilesMap[b.user_id] || null : null,
+      }));
+      setBookings(enriched as Booking[]);
     } catch (err: any) {
       setError(err.message || "Gagal memuat data booking");
     } finally {

@@ -8,9 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, ChevronDown, ChevronUp, ImageIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import PackageCommissions from "@/components/admin/PackageCommissions";
+
+interface Category {
+  id: string;
+  name: string;
+}
 
 interface Package {
   id: string;
@@ -22,6 +27,8 @@ interface Package {
   minimum_dp: number;
   dp_deadline_days: number;
   full_deadline_days: number;
+  image_url: string | null;
+  category_id: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -35,6 +42,7 @@ const AdminPackages = () => {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Package | null>(null);
   const [expandedCommission, setExpandedCommission] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const { toast } = useToast();
 
   const [form, setForm] = useState({
@@ -46,11 +54,23 @@ const AdminPackages = () => {
     minimum_dp: 0,
     dp_deadline_days: 30,
     full_deadline_days: 7,
+    image_url: "",
+    category_id: "",
   });
 
   useEffect(() => {
     fetchPackages();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from("package_categories")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order");
+    setCategories(data || []);
+  };
 
   const fetchPackages = async () => {
     const { data } = await supabase
@@ -77,6 +97,8 @@ const AdminPackages = () => {
       minimum_dp: form.minimum_dp,
       dp_deadline_days: form.dp_deadline_days,
       full_deadline_days: form.full_deadline_days,
+      image_url: form.image_url || null,
+      category_id: form.category_id || null,
     };
 
     try {
@@ -134,6 +156,8 @@ const AdminPackages = () => {
       minimum_dp: pkg.minimum_dp || 0,
       dp_deadline_days: pkg.dp_deadline_days || 30,
       full_deadline_days: pkg.full_deadline_days || 7,
+      image_url: pkg.image_url || "",
+      category_id: pkg.category_id || "",
     });
     setIsOpen(true);
   };
@@ -151,7 +175,7 @@ const AdminPackages = () => {
 
   const resetForm = () => {
     setEditing(null);
-    setForm({ title: "", slug: "", description: "", package_type: "", duration_days: 9, minimum_dp: 0, dp_deadline_days: 30, full_deadline_days: 7 });
+    setForm({ title: "", slug: "", description: "", package_type: "", duration_days: 9, minimum_dp: 0, dp_deadline_days: 30, full_deadline_days: 7, image_url: "", category_id: "" });
   };
 
   return (
@@ -251,6 +275,39 @@ const AdminPackages = () => {
                     />
                     <p className="text-xs text-muted-foreground">Sebelum berangkat</p>
                   </div>
+                </div>
+              </div>
+
+              {/* Kategori & Image */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Kategori</Label>
+                  <Select value={form.category_id} onValueChange={(val) => setForm({ ...form, category_id: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih kategori" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {categories.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Belum ada kategori. Tambah di menu Kategori.</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">URL Gambar</Label>
+                  <Input
+                    value={form.image_url}
+                    onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                    placeholder="https://example.com/image.jpg"
+                  />
+                  {form.image_url && (
+                    <div className="mt-2 rounded-lg border border-border overflow-hidden w-20 h-20">
+                      <img src={form.image_url} alt="Preview" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </div>
+                  )}
                 </div>
               </div>
 

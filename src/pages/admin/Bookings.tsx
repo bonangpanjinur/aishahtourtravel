@@ -24,10 +24,10 @@ const AdminBookings = () => {
       let query = supabase
         .from("bookings")
         .select(`
-          id, booking_code, total_price, status, created_at, package_id, pic_type, pic_id,
+          id, booking_code, total_price, status, created_at, package_id, pic_type, pic_id, user_id,
           package:packages(title),
           departure:package_departures(departure_date),
-          profile:profiles(name, email)
+          profile:profiles!bookings_user_id_profiles_fkey(name, email)
         `)
         .order("created_at", { ascending: false });
 

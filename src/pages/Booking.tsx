@@ -182,14 +182,24 @@ const Booking = () => {
       const { data: codeData } = await supabase.rpc("generate_booking_code");
       const bookingCode = codeData || `UMR-${Date.now()}`;
 
-      // Determine PIC
+      // Determine PIC and specific IDs for RLS
       let finalPicId: string | null = null;
       let finalPicType = picType;
+      let branchId: string | null = null;
+      let agentId: string | null = null;
       
       if (picType === "cabang" && picBranchId) {
         finalPicId = picBranchId;
+        branchId = picBranchId;
       } else if (picType === "agen" && picAgentId) {
         finalPicId = picAgentId;
+        agentId = picAgentId;
+        
+        // Also find the branch of this agent to populate branch_id
+        const agent = agents.find(a => a.id === picAgentId);
+        if (agent?.branch_id) {
+          branchId = agent.branch_id;
+        }
       }
 
       // Create booking
@@ -204,6 +214,8 @@ const Booking = () => {
           status: "draft",
           pic_type: finalPicType,
           pic_id: finalPicId,
+          branch_id: branchId,
+          agent_id: agentId,
         })
         .select()
         .single();

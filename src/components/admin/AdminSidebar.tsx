@@ -10,6 +10,7 @@ import {
 interface AdminSidebarProps {
   branding: BrandingSettings;
   isOpen: boolean;
+  role: string | null;
   onClose: () => void;
   onLogout: () => void;
   onPremiumClick: (feature: string) => void;
@@ -18,6 +19,7 @@ interface AdminSidebarProps {
 const AdminSidebar = ({ 
   branding, 
   isOpen, 
+  role,
   onClose, 
   onLogout, 
   onPremiumClick 
@@ -66,7 +68,21 @@ const AdminSidebar = ({
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-4 pt-20 lg:pt-4">
             <ul className="space-y-1">
-              {menuItems.map((item) => {
+              {menuItems
+                .filter((item) => {
+                  if (role === "super_admin" || role === "admin") return true;
+                  if (role === "staff") {
+                    return ["Dashboard", "Paket", "Keberangkatan", "Booking", "Pembayaran", "Laporan", "Jemaah"].includes(item.label);
+                  }
+                  if (role === "cabang") {
+                    return ["Dashboard", "Booking", "Pembayaran", "Laporan", "Jemaah", "Agen"].includes(item.label);
+                  }
+                  if (role === "agen") {
+                    return ["Dashboard", "Booking", "Pembayaran", "Laporan"].includes(item.label);
+                  }
+                  return false;
+                })
+                .map((item) => {
                 const isActive = location.pathname === item.href;
                 return (
                   <li key={item.href}>

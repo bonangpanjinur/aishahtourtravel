@@ -8,7 +8,7 @@ import UpgradeDialog from "./UpgradeDialog";
 import { BrandingSettings, defaultBranding } from "./adminMenuConfig";
 
 const AdminLayout = () => {
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const { user, isAdmin, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [branding, setBranding] = useState<BrandingSettings>(defaultBranding);
@@ -69,6 +69,7 @@ const AdminLayout = () => {
       <AdminSidebar
         branding={branding}
         isOpen={sidebarOpen}
+        role={role}
         onClose={() => setSidebarOpen(false)}
         onLogout={handleLogout}
         onPremiumClick={handlePremiumClick}

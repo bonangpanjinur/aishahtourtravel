@@ -59,11 +59,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const checkAdminStatus = async (userId: string) => {
     try {
-      const { data: roleData } = await supabase.rpc('get_user_role', { _user_id: userId });
-      setRole(roleData);
-      
+      // Fetch all roles for the user to handle multiple roles correctly
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+
+      if (rolesError) throw rolesError;
+
+      const userRoles = rolesData?.map(r => r.role) || [];
       const adminRoles = ['super_admin', 'admin', 'staff', 'cabang', 'agen'];
-      setIsAdmin(adminRoles.includes(roleData));
+      
+      // Check if any of the user's roles are in the adminRoles list
+      const hasAdminRole = userRoles.some(role => adminRoles.includes(role));
+      
+      // Set the primary role (prefer admin roles if present)
+      const primaryRole = userRoles.find(role => adminRoles.includes(role)) || userRoles[0] || null;
+      
+      setRole(primaryRole);
+      setIsAdmin(hasAdminRole);
     } catch (error) {
       console.error("Error checking admin status:", error);
       setIsAdmin(false);

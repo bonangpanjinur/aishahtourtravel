@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 const statusColors: Record<string, string> = {
   draft: "bg-gray-100 text-gray-800",
   waiting_payment: "bg-yellow-100 text-yellow-800",
+  dp_paid: "bg-blue-100 text-blue-800",
   paid: "bg-green-100 text-green-800",
   cancelled: "bg-red-100 text-red-800",
 };
@@ -10,6 +11,7 @@ const statusColors: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   draft: "Draft",
   waiting_payment: "Menunggu Pembayaran",
+  dp_paid: "DP Terbayar",
   paid: "Lunas",
   cancelled: "Dibatalkan",
 };

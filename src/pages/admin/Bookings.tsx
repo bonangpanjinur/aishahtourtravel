@@ -6,7 +6,10 @@ import BookingFilters from "@/components/admin/BookingFilters";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import EmptyState from "@/components/ui/empty-state";
 import ErrorAlert from "@/components/ui/error-alert";
-import { Package } from "lucide-react";
+import { Package, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+const PAGE_SIZE = 20;
 
 const AdminBookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -14,6 +17,8 @@ const AdminBookings = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const { toast } = useToast();
 
   const fetchBookings = useCallback(async () => {
@@ -21,6 +26,17 @@ const AdminBookings = () => {
     setLoading(true);
 
     try {
+      // Get total count first
+      let countQuery = supabase
+        .from("bookings")
+        .select("*", { count: "exact", head: true });
+      if (filter !== "all") countQuery = countQuery.eq("status", filter);
+      const { count } = await countQuery;
+      setTotalCount(count || 0);
+
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       let query = supabase
         .from("bookings")
         .select(`
@@ -28,7 +44,8 @@ const AdminBookings = () => {
           package:packages(title),
           departure:package_departures(departure_date)
         `)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (filter !== "all") {
         query = query.eq("status", filter);
@@ -60,7 +77,7 @@ const AdminBookings = () => {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, page]);
 
   useEffect(() => {
     fetchBookings();
@@ -95,7 +112,7 @@ const AdminBookings = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-display font-bold">Booking</h1>
-        <BookingFilters filter={filter} onFilterChange={setFilter} />
+        <BookingFilters filter={filter} onFilterChange={(f) => { setFilter(f); setPage(0); }} />
       </div>
 
       {loading ? (
@@ -109,12 +126,30 @@ const AdminBookings = () => {
           description="Booking dari jemaah akan muncul di sini"
         />
       ) : (
-        <BookingTable
-          bookings={bookings}
-          expandedId={expandedId}
-          onToggleExpand={handleToggleExpand}
-          onVerifyPayment={handleVerifyPayment}
-        />
+        <>
+          <BookingTable
+            bookings={bookings}
+            expandedId={expandedId}
+            onToggleExpand={handleToggleExpand}
+            onVerifyPayment={handleVerifyPayment}
+          />
+          {/* Pagination */}
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4 px-2">
+              <span className="text-sm text-muted-foreground">
+                {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, totalCount)} dari {totalCount}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+                </Button>
+                <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>
+                  Next <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

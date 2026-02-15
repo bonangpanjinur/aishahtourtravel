@@ -214,8 +214,6 @@ const Booking = () => {
           status: "draft",
           pic_type: finalPicType,
           pic_id: finalPicId,
-          branch_id: branchId,
-          agent_id: agentId,
         })
         .select()
         .single();

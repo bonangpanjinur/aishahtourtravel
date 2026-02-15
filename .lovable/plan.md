@@ -1,91 +1,102 @@
 
-# Plan: Komisi Otomatis di Detail Booking Admin + Rekomendasi Fitur MVP
+# Analisis Fitur: Yang Perlu Ditambah dan Disempurnakan
 
-## Bagian 1: Tambah Perhitungan Komisi di Halaman Booking Admin
+## A. FITUR YANG PERLU DISEMPURNAKAN (Bug/UX Issues)
 
-### Perubahan yang Dilakukan
+### 1. Booking Page - Error `branch_id` dan `agent_id`
+File `src/pages/Booking.tsx` baris 217-218 mengirim field `branch_id` dan `agent_id` ke tabel `bookings`, tapi kolom ini **tidak ada** di database. Tabel `bookings` hanya punya `pic_id` dan `pic_type`. Ini akan menyebabkan error saat submit booking.
 
-**1. Expand Row di Tabel Booking (`src/pages/admin/Bookings.tsx`)**
+**Solusi:** Hapus `branch_id` dan `agent_id` dari payload insert booking.
 
-Saat admin klik baris booking, akan muncul panel detail yang menampilkan:
-- Info PIC (nama, tipe: cabang/agen/karyawan)
-- Jumlah jemaah dalam booking tersebut
-- Rate komisi per jemaah (dari `package_commissions`)
-- **Total komisi otomatis** = rate x jumlah jemaah
-- Daftar jemaah dalam booking
+### 2. Pagination di Semua Halaman Admin
+Semua halaman admin (Bookings, Payments, Pilgrims, dll) memuat **seluruh data sekaligus** tanpa pagination. Dengan limit default Supabase 1000 rows, data besar akan terpotong tanpa peringatan.
 
-**2. Data yang Diambil**
-- Query `booking_pilgrims` untuk hitung jumlah jemaah
-- Query `package_commissions` untuk rate komisi sesuai `pic_type` dan `package_id`
-- Query `agents` / `branches` / `profiles` untuk nama PIC
+**Solusi:** Tambahkan pagination (load more atau page numbers) di halaman Bookings, Payments, Pilgrims, dan Reports.
 
-**3. Tampilan UI**
-- Tombol "Detail" (icon Eye) di setiap baris booking
-- Panel expandable di bawah baris menampilkan:
+### 3. Dashboard Tidak Filter Berdasarkan Role
+Dashboard admin menampilkan semua data terlepas dari role user. User dengan role `cabang` atau `agen` seharusnya hanya melihat data milik mereka.
 
-```text
-+--------------------------------------------------+
-| PIC: Agen - Ahmad Fauzi                          |
-| Paket: Umroh Plus Turkey                         |
-| Jemaah: 3 orang                                  |
-| Komisi/Jemaah: Rp 2.000.000                      |
-| TOTAL KOMISI: Rp 6.000.000                       |
-+--------------------------------------------------+
-| Daftar Jemaah:                                   |
-| 1. Budi - Laki-laki                              |
-| 2. Siti - Perempuan                              |
-| 3. Andi - Laki-laki                              |
-+--------------------------------------------------+
-```
+**Solusi:** Filter query dashboard berdasarkan role user yang sedang login.
 
-Booking tanpa PIC (pic_type = "pusat") akan menampilkan "Tidak ada komisi (Kantor Pusat)".
+### 4. Gender Display Inconsisten
+Di `BookingDetailPanel.tsx` baris 158, gender dicek dengan `"L"` dan `"Laki-laki"`, tapi di form Booking, value yang disimpan adalah `"male"` dan `"female"`. Ini menyebabkan label gender tidak muncul di detail panel.
+
+**Solusi:** Standarisasi pengecekan gender ke `"male"/"female"` di seluruh aplikasi.
 
 ---
 
-## Bagian 2: Rekomendasi Fitur MVP vs Premium
+## B. FITUR PENTING YANG BELUM ADA
 
-### Fitur yang SUDAH ADA (MVP -- Siap Pakai):
-1. Manajemen Paket Umroh (CRUD, harga per tipe kamar)
-2. Keberangkatan & Kuota
-3. Booking Online (pilih kamar, data jemaah, PIC)
-4. Pembayaran Multi-Tahap (DP + cicilan)
-5. Deadline Pembayaran Otomatis
-6. Notifikasi & Reminder Pembayaran
-7. Manajemen Cabang & Agen
-8. Komisi per Paket (Cabang/Agen/Karyawan)
-9. Laporan & Statistik (Booking, Pendapatan, Komisi)
-10. CMS (Blog, Halaman Dinamis, FAQ, Galeri, Testimoni)
-11. Autentikasi & Admin Dashboard
+### 5. Export Laporan ke Excel/PDF
+Halaman Reports sudah menampilkan grafik dan tabel, tapi tidak ada fitur export. Admin travel umroh membutuhkan laporan cetak untuk keperluan operasional.
 
-### Fitur yang BELUM ADA tapi PENTING untuk MVP:
-1. **Export Laporan ke Excel/PDF** -- admin butuh cetak laporan
-2. **Invoice/Kwitansi Otomatis** -- bukti pembayaran resmi
-3. **Manajemen Muthawif** -- sudah ada tabel tapi belum ada halaman admin
-4. **WhatsApp Integration** -- kirim notifikasi via WA (paling penting untuk travel umroh)
+**Solusi:** Tambahkan tombol "Export Excel" dan "Export PDF" di halaman Reports menggunakan library client-side (misalnya membuat CSV langsung dari data yang sudah ada).
 
-### Fitur untuk UPGRADE/PREMIUM (tampil menu tapi muncul notif upgrade):
-1. **Akuntansi & Keuangan** -- Buku besar, neraca, laporan laba rugi
-2. **CRM & Follow-up Otomatis** -- Pipeline calon jemaah, auto follow-up
-3. **Multi-Bahasa** -- Website dalam bahasa Arab/Inggris
-4. **Integrasi Payment Gateway** -- Bayar online via Midtrans/Xendit
-5. **Manajemen Dokumen Jemaah** -- Upload paspor, visa, foto, tracking status dokumen
-6. **Analitik AI** -- Prediksi demand, rekomendasi harga optimal
-7. **Mobile App** -- Aplikasi khusus untuk jemaah dan agen
-8. **Multi-Cabang Dashboard** -- Dashboard terpisah per cabang dengan login sendiri
+### 6. Halaman Admin Kategori Paket
+Tabel `package_categories` sudah ada di database dan sudah dipakai di halaman Packages (dropdown kategori), tapi belum ada halaman CRUD untuk mengelola kategori.
 
-### Implementasi Menu Premium
-- Tambah menu-menu premium di sidebar `AdminLayout.tsx` dengan icon `Crown` atau `Lock`
-- Saat diklik, tampilkan Dialog/Modal:
-  > "Fitur [Nama Fitur] tersedia di paket Premium. Hubungi kami untuk upgrade sistem Anda."
-  > dengan tombol "Hubungi Kami" (link ke WhatsApp)
+**Solusi:** Buat halaman `/admin/categories` untuk CRUD kategori paket, dan tambahkan menu di sidebar.
+
+### 7. Notifikasi WhatsApp
+Untuk travel umroh, WhatsApp adalah channel komunikasi utama. Saat ini notifikasi hanya disimpan di database (`notifications` table) tapi tidak dikirim ke manapun.
+
+**Solusi:** Buat edge function yang mengirim notifikasi WA (via API WhatsApp Business atau layanan seperti Fonnte) saat status booking berubah.
+
+### 8. Konfirmasi Pembayaran Multi-Tahap
+Halaman Payment (`src/pages/Payment.tsx`) dan Admin Payments sudah mendukung DP dan pelunasan, tapi ketika admin approve pembayaran DP, status booking langsung berubah ke "paid". Seharusnya:
+- DP approved -> status "dp_paid" (belum lunas)
+- Pelunasan approved -> status "paid" (lunas)
+
+**Solusi:** Tambahkan status `dp_paid` dan logika pengecekan apakah total pembayaran sudah mencapai `total_price`.
+
+### 9. Manajemen User & Role Assignment
+Belum ada halaman admin untuk melihat daftar semua user, assign role, atau mapping user ke cabang/agen. Saat ini role hanya bisa diatur langsung di database.
+
+**Solusi:** Buat halaman `/admin/users` untuk:
+- Daftar semua user beserta rolenya
+- Assign/ubah role user
+- Mapping user ke cabang atau agen
+
+### 10. Pencarian Global di Admin
+Tidak ada fitur pencarian global. Admin harus masuk ke masing-masing halaman untuk mencari data.
+
+**Solusi:** Tambahkan search bar di header admin yang bisa mencari across bookings, pilgrims, payments.
 
 ---
 
-## Detail Teknis
+## C. PRIORITAS IMPLEMENTASI (Diurutkan)
 
-### File yang Diubah:
-1. **`src/pages/admin/Bookings.tsx`** -- Tambah expand row dengan detail komisi, daftar jemaah, dan info PIC
-2. **`src/components/admin/AdminLayout.tsx`** -- Tambah menu premium dengan icon Lock dan handler upgrade dialog
-3. **Buat komponen baru `src/components/admin/UpgradeDialog.tsx`** -- Dialog reusable untuk notifikasi upgrade
+| No | Fitur | Prioritas | Alasan |
+|----|-------|-----------|--------|
+| 1 | Fix Booking insert error (branch_id/agent_id) | **Kritis** | Booking baru akan gagal |
+| 2 | Fix gender display inconsistency | **Tinggi** | Data tidak tampil benar |
+| 3 | Pagination | **Tinggi** | Data besar akan hilang |
+| 4 | Multi-tahap pembayaran (DP vs Lunas) | **Tinggi** | Logika bisnis salah |
+| 5 | Dashboard filter per role | **Tinggi** | Keamanan data |
+| 6 | Manajemen User & Role | **Sedang** | Operasional admin |
+| 7 | Halaman Kategori Paket | **Sedang** | Kelengkapan CRUD |
+| 8 | Export Laporan | **Sedang** | Kebutuhan operasional |
+| 9 | Notifikasi WhatsApp | **Sedang** | Komunikasi jemaah |
+| 10 | Pencarian Global | **Rendah** | Nice to have |
 
-### Tidak ada perubahan database -- semua data sudah tersedia di tabel yang ada.
+---
+
+## D. DETAIL TEKNIS IMPLEMENTASI
+
+### File yang Perlu Diubah:
+1. `src/pages/Booking.tsx` - Hapus `branch_id`, `agent_id` dari insert payload
+2. `src/components/admin/BookingDetailPanel.tsx` - Fix gender check
+3. `src/pages/admin/Bookings.tsx` - Tambah pagination
+4. `src/pages/admin/Payments.tsx` - Logika multi-tahap pembayaran
+5. `src/pages/admin/Dashboard.tsx` - Filter berdasarkan role
+6. `src/pages/admin/Reports.tsx` - Tambah tombol export
+
+### File Baru:
+1. `src/pages/admin/Categories.tsx` - CRUD kategori paket
+2. `src/pages/admin/Users.tsx` - Manajemen user dan role
+
+### Perubahan Database:
+- Tidak diperlukan perubahan schema untuk fix bug
+- Untuk fitur multi-tahap pembayaran, perlu update enum status booking (opsional, bisa pakai string biasa)
+
+Mau saya mulai dari yang mana? Saya rekomendasikan mulai dari **fix bug kritis** (nomor 1-4) terlebih dahulu, lalu lanjut ke fitur baru.

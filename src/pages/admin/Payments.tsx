@@ -82,11 +82,27 @@ const AdminPayments = () => {
 
       if (paymentError) throw paymentError;
 
-      // Update booking status
-      if (payment.booking) {
+      // Update booking status based on total payments
+      if (payment.booking && approve) {
+        // Sum all paid payments for this booking
+        const { data: allPayments } = await supabase
+          .from("payments")
+          .select("amount, status")
+          .eq("booking_id", payment.booking.id);
+
+        const totalPaid = (allPayments || [])
+          .filter((p: any) => p.status === "paid")
+          .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) + payment.amount;
+
+        const newStatus = totalPaid >= payment.booking.total_price ? "paid" : "dp_paid";
         await supabase
           .from("bookings")
-          .update({ status: approve ? "paid" : "cancelled" })
+          .update({ status: newStatus })
+          .eq("id", payment.booking.id);
+      } else if (payment.booking && !approve) {
+        await supabase
+          .from("bookings")
+          .update({ status: "cancelled" })
           .eq("id", payment.booking.id);
       }
 

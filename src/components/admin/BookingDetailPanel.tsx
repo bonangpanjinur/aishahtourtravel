@@ -155,7 +155,7 @@ const BookingDetailPanel = ({ bookingId, packageId, picType, picId, packageTitle
               <li key={p.id} className="flex items-center gap-2">
                 <UserCheck className="w-3 h-3 text-muted-foreground" />
                 <span>{i + 1}. {p.name}</span>
-                {p.gender && <span className="text-muted-foreground text-xs">- {p.gender === "L" || p.gender === "Laki-laki" ? "Laki-laki" : "Perempuan"}</span>}
+                {p.gender && <span className="text-muted-foreground text-xs">- {p.gender === "male" || p.gender === "L" || p.gender === "Laki-laki" ? "Laki-laki" : "Perempuan"}</span>}
               </li>
             ))}
           </ul>

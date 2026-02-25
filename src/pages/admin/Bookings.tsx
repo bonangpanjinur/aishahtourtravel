@@ -85,19 +85,40 @@ const AdminBookings = () => {
 
   const handleVerifyPayment = async (bookingId: string) => {
     try {
+      // Update all pending payments for this booking
+      await supabase
+        .from("payments")
+        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .eq("booking_id", bookingId)
+        .eq("status", "pending");
+
+      // Calculate total paid to determine booking status
+      const { data: allPayments } = await supabase
+        .from("payments")
+        .select("amount, status")
+        .eq("booking_id", bookingId);
+
+      const totalPaid = (allPayments || [])
+        .filter((p: any) => p.status === "paid")
+        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+      // Get booking total_price
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("total_price")
+        .eq("id", bookingId)
+        .single();
+
+      const newStatus = booking && totalPaid >= booking.total_price ? "paid" : "dp_paid";
+
       const { error } = await supabase
         .from("bookings")
-        .update({ status: "paid" })
+        .update({ status: newStatus })
         .eq("id", bookingId);
 
       if (error) throw error;
 
-      await supabase
-        .from("payments")
-        .update({ status: "paid", paid_at: new Date().toISOString() })
-        .eq("booking_id", bookingId);
-
-      toast({ title: "Pembayaran diverifikasi!" });
+      toast({ title: newStatus === "paid" ? "Booking lunas!" : "DP terverifikasi!" });
       fetchBookings();
     } catch (err: any) {
       toast({ title: "Gagal verifikasi", description: err.message, variant: "destructive" });

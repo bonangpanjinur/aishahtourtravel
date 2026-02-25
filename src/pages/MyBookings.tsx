@@ -27,6 +27,7 @@ interface BookingItem {
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   waiting_payment: "bg-warning/10 text-warning border-warning/20",
+  dp_paid: "bg-info/10 text-info border-info/20",
   paid: "bg-success/10 text-success border-success/20",
   cancelled: "bg-destructive/10 text-destructive border-destructive/20",
 };
@@ -34,6 +35,7 @@ const statusColors: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   draft: "Draft",
   waiting_payment: "Menunggu Pembayaran",
+  dp_paid: "DP Terbayar",
   paid: "Lunas",
   cancelled: "Dibatalkan",
 };
@@ -127,11 +129,18 @@ const MyBookings = () => {
                         {b.status !== "draft" && (
                           <InvoiceButton bookingId={b.id} />
                         )}
-                        {/* Payment Button - show for draft and waiting_payment */}
+                        {/* Payment Button - show for draft, waiting_payment, and dp_paid */}
                         {(b.status === "draft" || b.status === "waiting_payment") && (
                           <Link to={`/booking/payment/${b.id}`}>
                             <Button size="sm" className="gradient-gold text-primary">
                               Bayar <ArrowRight className="w-4 h-4 ml-1" />
+                            </Button>
+                          </Link>
+                        )}
+                        {b.status === "dp_paid" && (
+                          <Link to={`/booking/payment/${b.id}`}>
+                            <Button size="sm" className="gradient-gold text-primary">
+                              Bayar Pelunasan <ArrowRight className="w-4 h-4 ml-1" />
                             </Button>
                           </Link>
                         )}

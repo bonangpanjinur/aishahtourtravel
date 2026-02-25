@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Search, Eye, Users, Calendar, Phone, Mail, CreditCard } from "lucide-react";
+import { Search, Eye, Users, Calendar, Phone, Mail, CreditCard, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -38,11 +38,14 @@ interface Pilgrim {
 const getStatusBadge = (status: string | undefined) => {
   switch (status) {
     case "paid": return <Badge className="bg-success/10 text-success border-success/20">Lunas</Badge>;
+    case "dp_paid": return <Badge className="bg-info/10 text-info border-info/20">DP Terbayar</Badge>;
     case "waiting_payment": return <Badge className="bg-warning/10 text-warning border-warning/20">Menunggu</Badge>;
     case "cancelled": return <Badge className="bg-destructive/10 text-destructive border-destructive/20">Batal</Badge>;
     default: return <Badge variant="outline">{status || "draft"}</Badge>;
   }
 };
+
+const PAGE_SIZE = 20;
 
 const AdminPilgrims = () => {
   const [pilgrims, setPilgrims] = useState<Pilgrim[]>([]);
@@ -51,12 +54,23 @@ const AdminPilgrims = () => {
   const [search, setSearch] = useState("");
   const [selectedPilgrim, setSelectedPilgrim] = useState<Pilgrim | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const isMobile = useIsMobile();
 
   const fetchPilgrims = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
+      // Get total count
+      const { count } = await supabase
+        .from("booking_pilgrims")
+        .select("*", { count: "exact", head: true });
+      setTotalCount(count || 0);
+
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       const { data, error: fetchError } = await supabase
         .from("booking_pilgrims")
         .select(`
@@ -67,7 +81,8 @@ const AdminPilgrims = () => {
             departure:package_departures(departure_date)
           )
         `)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (fetchError) throw fetchError;
       setPilgrims((data as unknown as Pilgrim[]) || []);
@@ -76,7 +91,7 @@ const AdminPilgrims = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     fetchPilgrims();
@@ -104,7 +119,7 @@ const AdminPilgrims = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-display font-bold">Daftar Jemaah</h1>
-          <p className="text-muted-foreground">Total {pilgrims.length} jemaah terdaftar</p>
+          <p className="text-muted-foreground">Total {totalCount} jemaah terdaftar</p>
         </div>
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -204,6 +219,23 @@ const AdminPilgrims = () => {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalCount > PAGE_SIZE && (
+        <div className="flex items-center justify-between mt-4 px-2">
+          <span className="text-sm text-muted-foreground">
+            {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, totalCount)} dari {totalCount}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+            </Button>
+            <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>
+              Next <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           </div>
         </div>
       )}

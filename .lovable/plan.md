@@ -16,16 +16,14 @@ Sudah ditambahkan pagination server-side di halaman Bookings.
 ### 4. [SUDAH DIPERBAIKI] Multi-tahap pembayaran (DP vs Lunas)
 Logika `dp_paid` sudah ditambahkan di admin Payments.
 
-### 5. [BELUM] Status `dp_paid` belum ditangani di halaman user (MyBookings)
-File `src/pages/MyBookings.tsx` baris 27-39 belum punya mapping untuk status `dp_paid`. Jemaah yang sudah bayar DP akan melihat badge kosong.
-- Tambahkan `dp_paid` ke `statusColors` dan `statusLabels`
-- Tambahkan tombol "Bayar Pelunasan" untuk status `dp_paid`
+### 5. [SUDAH DIPERBAIKI] Status `dp_paid` di MyBookings
+Sudah ditambahkan mapping dp_paid ke statusColors/statusLabels dan tombol "Bayar Pelunasan".
 
-### 6. [BELUM] Pagination belum ada di Payments, Pilgrims, Reports
-Hanya Bookings yang sudah punya pagination. Halaman Payments dan Pilgrims masih load semua data sekaligus.
+### 6. [SUDAH DIPERBAIKI] Pagination di Payments & Pilgrims
+Sudah ditambahkan server-side pagination (PAGE_SIZE=20) di kedua halaman.
 
-### 7. [BELUM] handleVerifyPayment di Bookings.tsx tidak konsisten
-Baris 86-104 di `src/pages/admin/Bookings.tsx` langsung set status `paid` tanpa cek apakah ini DP atau pelunasan. Ini bertentangan dengan logika multi-tahap yang sudah diimplementasi di Payments.tsx.
+### 7. [SUDAH DIPERBAIKI] handleVerifyPayment di Bookings.tsx
+Sudah diperbaiki agar cek total pembayaran dan set status dp_paid/paid sesuai logika multi-tahap.
 
 ---
 

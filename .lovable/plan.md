@@ -1,102 +1,160 @@
 
-# Analisis Fitur: Yang Perlu Ditambah dan Disempurnakan
 
-## A. FITUR YANG PERLU DISEMPURNAKAN (Bug/UX Issues)
+# Daftar Lengkap Pengembangan dan Perbaikan
 
-### 1. Booking Page - Error `branch_id` dan `agent_id`
-File `src/pages/Booking.tsx` baris 217-218 mengirim field `branch_id` dan `agent_id` ke tabel `bookings`, tapi kolom ini **tidak ada** di database. Tabel `bookings` hanya punya `pic_id` dan `pic_type`. Ini akan menyebabkan error saat submit booking.
+## A. BUG & PERBAIKAN KRITIS
 
-**Solusi:** Hapus `branch_id` dan `agent_id` dari payload insert booking.
+### 1. [SUDAH DIPERBAIKI] Booking insert error (branch_id/agent_id)
+Sudah dihapus dari payload insert booking.
 
-### 2. Pagination di Semua Halaman Admin
-Semua halaman admin (Bookings, Payments, Pilgrims, dll) memuat **seluruh data sekaligus** tanpa pagination. Dengan limit default Supabase 1000 rows, data besar akan terpotong tanpa peringatan.
+### 2. [SUDAH DIPERBAIKI] Gender display inconsistency
+Sudah distandarkan di BookingDetailPanel.
 
-**Solusi:** Tambahkan pagination (load more atau page numbers) di halaman Bookings, Payments, Pilgrims, dan Reports.
+### 3. [SUDAH DIPERBAIKI] Pagination di Bookings
+Sudah ditambahkan pagination server-side di halaman Bookings.
 
-### 3. Dashboard Tidak Filter Berdasarkan Role
-Dashboard admin menampilkan semua data terlepas dari role user. User dengan role `cabang` atau `agen` seharusnya hanya melihat data milik mereka.
+### 4. [SUDAH DIPERBAIKI] Multi-tahap pembayaran (DP vs Lunas)
+Logika `dp_paid` sudah ditambahkan di admin Payments.
 
-**Solusi:** Filter query dashboard berdasarkan role user yang sedang login.
+### 5. [BELUM] Status `dp_paid` belum ditangani di halaman user (MyBookings)
+File `src/pages/MyBookings.tsx` baris 27-39 belum punya mapping untuk status `dp_paid`. Jemaah yang sudah bayar DP akan melihat badge kosong.
+- Tambahkan `dp_paid` ke `statusColors` dan `statusLabels`
+- Tambahkan tombol "Bayar Pelunasan" untuk status `dp_paid`
 
-### 4. Gender Display Inconsisten
-Di `BookingDetailPanel.tsx` baris 158, gender dicek dengan `"L"` dan `"Laki-laki"`, tapi di form Booking, value yang disimpan adalah `"male"` dan `"female"`. Ini menyebabkan label gender tidak muncul di detail panel.
+### 6. [BELUM] Pagination belum ada di Payments, Pilgrims, Reports
+Hanya Bookings yang sudah punya pagination. Halaman Payments dan Pilgrims masih load semua data sekaligus.
 
-**Solusi:** Standarisasi pengecekan gender ke `"male"/"female"` di seluruh aplikasi.
+### 7. [BELUM] handleVerifyPayment di Bookings.tsx tidak konsisten
+Baris 86-104 di `src/pages/admin/Bookings.tsx` langsung set status `paid` tanpa cek apakah ini DP atau pelunasan. Ini bertentangan dengan logika multi-tahap yang sudah diimplementasi di Payments.tsx.
 
 ---
 
-## B. FITUR PENTING YANG BELUM ADA
+## B. FITUR YANG BELUM ADA (Prioritas Tinggi)
 
-### 5. Export Laporan ke Excel/PDF
-Halaman Reports sudah menampilkan grafik dan tabel, tapi tidak ada fitur export. Admin travel umroh membutuhkan laporan cetak untuk keperluan operasional.
+### 8. Dashboard filter per role
+Dashboard menampilkan semua data tanpa filter role. User `cabang` dan `agen` bisa melihat semua booking, revenue, dan statistik milik orang lain.
+- Filter semua query berdasarkan `pic_id` / `pic_type` untuk role cabang/agen
 
-**Solusi:** Tambahkan tombol "Export Excel" dan "Export PDF" di halaman Reports menggunakan library client-side (misalnya membuat CSV langsung dari data yang sudah ada).
-
-### 6. Halaman Admin Kategori Paket
-Tabel `package_categories` sudah ada di database dan sudah dipakai di halaman Packages (dropdown kategori), tapi belum ada halaman CRUD untuk mengelola kategori.
-
-**Solusi:** Buat halaman `/admin/categories` untuk CRUD kategori paket, dan tambahkan menu di sidebar.
-
-### 7. Notifikasi WhatsApp
-Untuk travel umroh, WhatsApp adalah channel komunikasi utama. Saat ini notifikasi hanya disimpan di database (`notifications` table) tapi tidak dikirim ke manapun.
-
-**Solusi:** Buat edge function yang mengirim notifikasi WA (via API WhatsApp Business atau layanan seperti Fonnte) saat status booking berubah.
-
-### 8. Konfirmasi Pembayaran Multi-Tahap
-Halaman Payment (`src/pages/Payment.tsx`) dan Admin Payments sudah mendukung DP dan pelunasan, tapi ketika admin approve pembayaran DP, status booking langsung berubah ke "paid". Seharusnya:
-- DP approved -> status "dp_paid" (belum lunas)
-- Pelunasan approved -> status "paid" (lunas)
-
-**Solusi:** Tambahkan status `dp_paid` dan logika pengecekan apakah total pembayaran sudah mencapai `total_price`.
-
-### 9. Manajemen User & Role Assignment
-Belum ada halaman admin untuk melihat daftar semua user, assign role, atau mapping user ke cabang/agen. Saat ini role hanya bisa diatur langsung di database.
-
-**Solusi:** Buat halaman `/admin/users` untuk:
-- Daftar semua user beserta rolenya
-- Assign/ubah role user
+### 9. Halaman Manajemen User & Role (`/admin/users`)
+Belum ada halaman admin untuk:
+- Melihat daftar semua user
+- Assign/ubah role (super_admin, admin, staff, cabang, agen, jemaah)
 - Mapping user ke cabang atau agen
+- Saat ini hanya bisa dikelola langsung di database
 
-### 10. Pencarian Global di Admin
-Tidak ada fitur pencarian global. Admin harus masuk ke masing-masing halaman untuk mencari data.
+### 10. Halaman CRUD Kategori Paket (`/admin/categories`)
+Tabel `package_categories` sudah ada dan sudah dipakai sebagai dropdown di form Packages, tapi belum ada halaman admin untuk mengelola kategori (tambah, edit, hapus).
 
-**Solusi:** Tambahkan search bar di header admin yang bisa mencari across bookings, pilgrims, payments.
-
----
-
-## C. PRIORITAS IMPLEMENTASI (Diurutkan)
-
-| No | Fitur | Prioritas | Alasan |
-|----|-------|-----------|--------|
-| 1 | Fix Booking insert error (branch_id/agent_id) | **Kritis** | Booking baru akan gagal |
-| 2 | Fix gender display inconsistency | **Tinggi** | Data tidak tampil benar |
-| 3 | Pagination | **Tinggi** | Data besar akan hilang |
-| 4 | Multi-tahap pembayaran (DP vs Lunas) | **Tinggi** | Logika bisnis salah |
-| 5 | Dashboard filter per role | **Tinggi** | Keamanan data |
-| 6 | Manajemen User & Role | **Sedang** | Operasional admin |
-| 7 | Halaman Kategori Paket | **Sedang** | Kelengkapan CRUD |
-| 8 | Export Laporan | **Sedang** | Kebutuhan operasional |
-| 9 | Notifikasi WhatsApp | **Sedang** | Komunikasi jemaah |
-| 10 | Pencarian Global | **Rendah** | Nice to have |
+### 11. Export Laporan ke Excel/CSV
+Halaman Reports menampilkan grafik dan tabel, tapi tidak ada tombol export. Admin travel membutuhkan ini untuk keperluan operasional dan pelaporan.
 
 ---
 
-## D. DETAIL TEKNIS IMPLEMENTASI
+## C. FITUR YANG BELUM ADA (Prioritas Sedang)
 
-### File yang Perlu Diubah:
-1. `src/pages/Booking.tsx` - Hapus `branch_id`, `agent_id` dari insert payload
-2. `src/components/admin/BookingDetailPanel.tsx` - Fix gender check
-3. `src/pages/admin/Bookings.tsx` - Tambah pagination
-4. `src/pages/admin/Payments.tsx` - Logika multi-tahap pembayaran
-5. `src/pages/admin/Dashboard.tsx` - Filter berdasarkan role
-6. `src/pages/admin/Reports.tsx` - Tambah tombol export
+### 12. Pencarian global di admin
+Tidak ada search bar global di header admin. Admin harus masuk ke tiap halaman untuk mencari data.
 
-### File Baru:
-1. `src/pages/admin/Categories.tsx` - CRUD kategori paket
-2. `src/pages/admin/Users.tsx` - Manajemen user dan role
+### 13. Kupon / Diskon
+Tabel `coupons` sudah ada di database (code, discount_type, value, min_purchase, max_uses, expired_at), tapi:
+- Belum ada halaman admin CRUD untuk kupon
+- Belum ada integrasi di form booking (input kode kupon)
+- Belum ada validasi dan kalkulasi diskon
 
-### Perubahan Database:
-- Tidak diperlukan perubahan schema untuk fix bug
-- Untuk fitur multi-tahap pembayaran, perlu update enum status booking (opsional, bisa pakai string biasa)
+### 14. Halaman Admin Kupon (`/admin/coupons`)
+Buat CRUD kupon: kode, tipe diskon (persen/nominal), nilai, min pembelian, max penggunaan, tanggal kadaluarsa.
 
-Mau saya mulai dari yang mana? Saya rekomendasikan mulai dari **fix bug kritis** (nomor 1-4) terlebih dahulu, lalu lanjut ke fitur baru.
+### 15. Notifikasi WhatsApp
+Notifikasi hanya disimpan di tabel `notifications` tapi tidak dikirim ke channel manapun. Untuk travel umroh, WhatsApp adalah kanal utama.
+- Buat edge function integrasi WA API (Fonnte/WA Business)
+- Kirim notifikasi saat: booking dibuat, pembayaran diverifikasi, pengingat deadline
+
+### 16. Print/Download Manifes Keberangkatan
+Admin belum bisa mencetak daftar jemaah per keberangkatan. Fitur ini krusial untuk operasional di bandara.
+
+### 17. Halaman Detail Keberangkatan
+Saat ini admin hanya bisa melihat daftar keberangkatan. Belum ada halaman detail yang menampilkan:
+- Daftar jemaah yang terdaftar di keberangkatan tersebut
+- Status pembayaran masing-masing
+- Assign muthawif
+
+---
+
+## D. FITUR YANG BELUM ADA (Prioritas Rendah / Nice-to-Have)
+
+### 18. Dark mode toggle
+Sudah install `next-themes` tapi belum ada toggle UI untuk user.
+
+### 19. Audit log / Activity log
+Belum ada pencatatan aktivitas admin (siapa yang approve pembayaran, siapa yang edit booking, dll).
+
+### 20. Bulk actions di tabel admin
+Belum bisa select multiple rows dan lakukan aksi massal (contoh: approve beberapa pembayaran sekaligus, export selected).
+
+### 21. Notifikasi admin real-time
+Admin belum punya NotificationBell. Hanya user biasa (jemaah) yang punya notifikasi. Admin seharusnya dapat notifikasi saat ada booking baru atau pembayaran masuk.
+
+### 22. Filter dan sorting di semua tabel admin
+Kebanyakan tabel admin tidak punya fitur sort by column atau filter lanjutan (contoh: filter booking by date range, package, dll).
+
+### 23. Konfirmasi sebelum navigasi (unsaved changes)
+Form-form admin tidak ada warning ketika user menutup modal atau pindah halaman saat ada perubahan yang belum disimpan.
+
+### 24. Upload gambar langsung di form paket
+Field `image_url` di form paket hanya menerima URL teks. Belum ada fitur upload gambar langsung ke storage lalu auto-fill URL.
+
+---
+
+## E. PRIORITAS IMPLEMENTASI
+
+| No | Fitur | Status | Prioritas |
+|----|-------|--------|-----------|
+| 5 | Status dp_paid di MyBookings | Belum | Kritis |
+| 7 | Fix handleVerifyPayment inkonsisten | Belum | Kritis |
+| 6 | Pagination di Payments & Pilgrims | Belum | Tinggi |
+| 8 | Dashboard filter per role | Belum | Tinggi |
+| 9 | Halaman Manajemen User & Role | Belum | Tinggi |
+| 10 | Halaman CRUD Kategori Paket | Belum | Sedang |
+| 11 | Export Laporan Excel/CSV | Belum | Sedang |
+| 13 | Integrasi Kupon di Booking | Belum | Sedang |
+| 14 | Halaman Admin Kupon | Belum | Sedang |
+| 16 | Print Manifes Keberangkatan | Belum | Sedang |
+| 17 | Detail Keberangkatan + daftar jemaah | Belum | Sedang |
+| 21 | Notifikasi admin real-time | Belum | Sedang |
+| 12 | Pencarian global admin | Belum | Rendah |
+| 15 | Notifikasi WhatsApp | Belum | Rendah |
+| 18 | Dark mode toggle | Belum | Rendah |
+| 19 | Audit log | Belum | Rendah |
+| 20 | Bulk actions | Belum | Rendah |
+| 22 | Filter & sorting lanjutan | Belum | Rendah |
+| 23 | Unsaved changes warning | Belum | Rendah |
+| 24 | Upload gambar langsung | Belum | Rendah |
+
+---
+
+## F. RENCANA IMPLEMENTASI (Batch)
+
+**Batch 1 - Fix kritis:**
+- Tambah status `dp_paid` di MyBookings.tsx
+- Fix handleVerifyPayment di Bookings.tsx agar konsisten dengan logika multi-tahap
+- Tambah pagination di Payments.tsx dan Pilgrims.tsx
+
+**Batch 2 - Keamanan & Role:**
+- Dashboard filter per role
+- Halaman Manajemen User & Role (`/admin/users`)
+
+**Batch 3 - Kelengkapan CRUD:**
+- Halaman Kategori Paket (`/admin/categories`)
+- Halaman Admin Kupon (`/admin/coupons`)
+- Integrasi kupon di form booking
+
+**Batch 4 - Operasional:**
+- Export laporan Excel/CSV
+- Print manifes keberangkatan
+- Detail keberangkatan dengan daftar jemaah
+
+**Batch 5 - Enhancement:**
+- Notifikasi admin
+- Pencarian global
+- Upload gambar langsung di form paket
+

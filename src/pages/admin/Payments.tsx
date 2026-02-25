@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { Eye, CheckCircle, XCircle, Image, DollarSign, FileText, Download, ZoomIn } from "lucide-react";
+import { Eye, CheckCircle, XCircle, Image, DollarSign, FileText, Download, ZoomIn, ChevronLeft, ChevronRight } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import EmptyState from "@/components/ui/empty-state";
@@ -31,6 +31,8 @@ interface Payment {
   } | null;
 }
 
+const PAGE_SIZE = 20;
+
 const AdminPayments = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,25 +40,37 @@ const AdminPayments = () => {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [imageOpen, setImageOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchPayments();
-  }, []);
+  }, [page]);
 
   const fetchPayments = useCallback(async () => {
     setError(null);
     setLoading(true);
     
     try {
+      // Get total count
+      const { count } = await supabase
+        .from("payments")
+        .select("*", { count: "exact", head: true });
+      setTotalCount(count || 0);
+
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       const { data, error: fetchError } = await supabase
         .from("payments")
         .select(`
           *,
           booking:bookings(id, booking_code, status, total_price, user_id)
         `)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (fetchError) throw fetchError;
       setPayments((data as unknown as Payment[]) || []);
@@ -65,7 +79,7 @@ const AdminPayments = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   const handleVerify = async (payment: Payment, approve: boolean) => {
     if (!confirm(approve ? "Setujui pembayaran ini?" : "Tolak pembayaran ini?")) return;
@@ -258,6 +272,7 @@ const AdminPayments = () => {
           description="Pembayaran dari jemaah akan muncul di sini untuk diverifikasi"
         />
       ) : (
+        <>
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           {isMobile ? (
             <div className="divide-y divide-border">
@@ -351,6 +366,23 @@ const AdminPayments = () => {
           </div>
           )}
         </div>
+        {/* Pagination */}
+        {totalCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between mt-4 px-2">
+            <span className="text-sm text-muted-foreground">
+              {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, totalCount)} dari {totalCount}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+              </Button>
+              <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>
+                Next <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
